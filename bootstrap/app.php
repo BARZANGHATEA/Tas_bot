@@ -30,14 +30,5 @@ return Application::configure(basePath: dirname(__DIR__))
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->dontReport(BusinessRuleException::class);
 
-        // Admin pages: show rule violations as a flash message instead of JSON.
-        $exceptions->render(function (BusinessRuleException $e, Request $request) {
-            if ($request->is('admin', 'admin/*') && ! $request->expectsJson()) {
-                return back()->withInput($request->except(['password', 'confirm_password']))->with('error', $e->getMessage());
-            }
-
-            return null;
-        });
-
         $exceptions->shouldRenderJsonWhen(fn (Request $request) => $request->is('api/*') || $request->expectsJson());
     })->create();

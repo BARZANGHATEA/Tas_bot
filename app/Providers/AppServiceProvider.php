@@ -10,6 +10,7 @@ use App\Services\Settings;
 use App\Services\Telegram\NotificationService;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
+use Illuminate\Pagination\Paginator;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Blade;
@@ -34,6 +35,9 @@ class AppServiceProvider extends ServiceProvider
         Auth::viaRequest('miniapp-token', fn (Request $request) => app(MiniAppAuth::class)->resolve($request->bearerToken()));
 
         $this->configureRateLimiting();
+
+        Paginator::defaultView('admin.partials.pagination');
+        Paginator::defaultSimpleView('admin.partials.pagination');
 
         Blade::if('adminCan', fn (string $permission) => (bool) Auth::guard('admin')->user()?->hasPermission($permission));
 

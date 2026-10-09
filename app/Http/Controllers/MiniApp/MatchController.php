@@ -52,6 +52,18 @@ class MatchController extends Controller
         return response()->json(['match' => $this->matches->present($match, $user)]);
     }
 
+    /** Resolve an invitation deep link (start_param "m_<code>"). */
+    public function byCode(Request $request, string $code): JsonResponse
+    {
+        abort_unless(preg_match('/^[A-Za-z0-9]{20}$/', $code) === 1, 404);
+        $user = $request->user('miniapp');
+        $match = GameMatch::query()->where('invite_code', $code)->firstOrFail();
+
+        abort_unless($this->matches->canView($user, $match, $code), 404);
+
+        return response()->json(['match' => $this->matches->present($match, $user), 'code' => $code]);
+    }
+
     public function join(Request $request, string $uuid): JsonResponse
     {
         $data = $request->validate(['code' => ['nullable', 'string', 'max:32']]);

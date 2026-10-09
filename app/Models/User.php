@@ -101,6 +101,11 @@ class User extends Model implements Authenticatable
         return $this->hasMany(ReferralReward::class, 'beneficiary_id');
     }
 
+    public function appSessions(): HasMany
+    {
+        return $this->hasMany(AppSession::class);
+    }
+
     public function fraudFlags(): HasMany
     {
         return $this->hasMany(FraudFlag::class);

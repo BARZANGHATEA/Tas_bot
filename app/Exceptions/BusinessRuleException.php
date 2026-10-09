@@ -3,6 +3,8 @@
 namespace App\Exceptions;
 
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
 use RuntimeException;
 
 /**
@@ -21,8 +23,14 @@ class BusinessRuleException extends RuntimeException
         parent::__construct($message);
     }
 
-    public function render(): JsonResponse
+    public function render(Request $request): JsonResponse|RedirectResponse
     {
+        // Admin dashboard forms: show the rule violation as a flash message.
+        if ($request->is('admin', 'admin/*') && ! $request->expectsJson()) {
+            return back()->withInput($request->except(['password', 'password_confirmation', 'confirm_password']))
+                ->with('error', $this->getMessage());
+        }
+
         return response()->json([
             'message' => $this->getMessage(),
             'code' => $this->errorCode,

@@ -26,6 +26,7 @@ Route::prefix('miniapp')->name('miniapp.')->group(function () {
 
         Route::get('matches', [MiniApp\MatchController::class, 'index'])->name('matches.index');
         Route::post('matches', [MiniApp\MatchController::class, 'store'])->middleware('throttle:game')->name('matches.store');
+        Route::get('matches/invite/{code}', [MiniApp\MatchController::class, 'byCode'])->name('matches.by-code');
         Route::get('matches/{uuid}', [MiniApp\MatchController::class, 'show'])->name('matches.show');
         Route::post('matches/{uuid}/join', [MiniApp\MatchController::class, 'join'])->middleware('throttle:game')->name('matches.join');
         Route::post('matches/{uuid}/roll', [MiniApp\MatchController::class, 'roll'])->middleware('throttle:game')->name('matches.roll');

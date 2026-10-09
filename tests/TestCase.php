@@ -50,7 +50,7 @@ abstract class TestCase extends BaseTestCase
     /** Each simulated HTTP request must resolve its own player from its bearer token. */
     public function call($method, $uri, $parameters = [], $cookies = [], $files = [], $server = [], $content = null)
     {
-        $this->app['auth']->forgetGuards();
+        $this->app['auth']->guard('miniapp')->forgetUser();
 
         return parent::call($method, $uri, $parameters, $cookies, $files, $server, $content);
     }
