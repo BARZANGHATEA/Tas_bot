@@ -100,6 +100,7 @@ https://دامنه-شما/install.php
 | «Please open this app from Telegram» | برنامه باید از دکمه داخل ربات باز شود، نه مستقیم در مرورگر. |
 | ربات جواب `/start` نمی‌دهد | پنل → Telegram bot: آدرس وبهوک باید سبز باشد و آدرس سایت `https` باشد. |
 | پیام‌ها دیر می‌رسند | کرون فعال نیست؛ پنل → System & updates وضعیت «Scheduler last run» را نشان می‌دهد. |
+| بعد از نصب در زیرپوشه (مثل `/Tas_bot`) خطای 404 | نسخه جدید را آپلود کنید (یا فقط سه فایل `.htaccess`، `public/index.php` و `app/Support/SubdirectoryRewrite.php`). آدرس پنل: `https://دامنه/زیرپوشه/admin` |
 | نصب مجدد لازم است | فایل `storage/installed.lock` را حذف کنید و دوباره `install.php` را باز کنید (داده‌های موجود پاک نمی‌شوند). |
 
 برای امنیت بیشتر، پس از نصب می‌توانید فایل `public/install.php` را حذف کنید.

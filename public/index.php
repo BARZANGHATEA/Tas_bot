@@ -1,5 +1,6 @@
 <?php
 
+use App\Support\SubdirectoryRewrite;
 use Illuminate\Foundation\Application;
 use Illuminate\Http\Request;
 
@@ -12,6 +13,9 @@ if (file_exists($maintenance = __DIR__.'/../storage/framework/maintenance.php'))
 
 // Register the Composer autoloader...
 require __DIR__.'/../vendor/autoload.php';
+
+// Installed in a sub-folder behind the root .htaccess? Fix up the paths PHP reports.
+$_SERVER = SubdirectoryRewrite::apply($_SERVER);
 
 // Bootstrap Laravel and handle the request...
 /** @var Application $app */

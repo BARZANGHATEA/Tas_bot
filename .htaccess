@@ -1,5 +1,13 @@
-# Fallback for hosts where the document root cannot point at /public.
+# Fallback for hosts where the document root cannot point at /public
+# (e.g. the project is extracted into public_html or public_html/sub-folder).
 # Prefer setting the domain's document root to the "public" directory.
+
+# The project contains real folders such as app/ — don't let Apache redirect
+# "/app" to "/app/" before the request is handed to Laravel.
+<IfModule mod_dir.c>
+    DirectorySlash Off
+</IfModule>
+
 <IfModule mod_rewrite.c>
     RewriteEngine On
     RewriteRule ^(.*)$ public/$1 [L]
