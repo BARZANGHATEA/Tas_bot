@@ -11,6 +11,7 @@ use App\Services\Settings;
 use App\Support\Money;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Foundation\Testing\TestCase as BaseTestCase;
+use Illuminate\Http\Client\Factory as HttpFactory;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
 use Tests\Support\FakeDiceRoller;
@@ -31,9 +32,7 @@ abstract class TestCase extends BaseTestCase
             'dicegame.telegram.webhook_secret' => 'webhook-secret',
         ]);
 
-        // No real network calls from tests.
-        Http::preventStrayRequests();
-        Http::fake(['api.telegram.org/*' => Http::response(['ok' => true, 'result' => []])]);
+        $this->fakeTelegram();
 
         $this->dice = new FakeDiceRoller;
         $this->app->instance(DiceRoller::class, $this->dice);
@@ -44,7 +43,27 @@ abstract class TestCase extends BaseTestCase
             'withdraw.min_account_age_hours' => 0,
             'withdraw.min_games' => 0,
             'referral.qualify_min_age_hours' => 0,
+            'rate.withdraw_per_hour' => 1000,
         ]);
+    }
+
+    /** Each simulated HTTP request must resolve its own player from its bearer token. */
+    public function call($method, $uri, $parameters = [], $cookies = [], $files = [], $server = [], $content = null)
+    {
+        $this->app['auth']->forgetGuards();
+
+        return parent::call($method, $uri, $parameters, $cookies, $files, $server, $content);
+    }
+
+    /**
+     * Replace all HTTP fakes. Specific stubs are matched before the catch-all
+     * Bot API stub; anything else is a stray request and fails the test.
+     */
+    protected function fakeTelegram(array $stubs = []): void
+    {
+        Http::swap(new HttpFactory);
+        Http::preventStrayRequests();
+        Http::fake($stubs + ['api.telegram.org/*' => Http::response(['ok' => true, 'result' => ['message_id' => 1]])]);
     }
 
     protected function setSettings(array $values): void

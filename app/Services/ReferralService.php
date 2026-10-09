@@ -41,11 +41,11 @@ class ReferralService
     /** Resolve a referral start parameter ("ref_CODE") to an eligible inviter. */
     public function resolveReferrer(?string $startParam, int $newTelegramId): ?User
     {
-        if ($startParam === null || ! preg_match('/^ref_([A-Z2-9]{8})$/', strtoupper($startParam), $m)) {
+        if ($startParam === null || ! preg_match('/^ref_([A-Za-z2-9]{8})$/', $startParam, $m)) {
             return null;
         }
 
-        $referrer = User::query()->where('referral_code', $m[1])->first();
+        $referrer = User::query()->where('referral_code', strtoupper($m[1]))->first();
 
         if (! $referrer || $referrer->telegram_id === $newTelegramId || $referrer->isSuspended()) {
             return null;

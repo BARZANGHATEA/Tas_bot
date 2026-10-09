@@ -31,7 +31,8 @@ class Admin extends Authenticatable
             return false;
         }
 
-        $roles = config('dicegame.permissions.'.$permission, []);
+        // Permission names contain dots, so index the array rather than using config() dot paths.
+        $roles = config('dicegame.permissions', [])[$permission] ?? [];
 
         return in_array($this->role->value, $roles, true);
     }

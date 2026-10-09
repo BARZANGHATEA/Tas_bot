@@ -114,6 +114,11 @@ class MissionService
         $this->assertEligible($user, $mission);
         $period = $this->periodKey($mission);
 
+        $previous = MissionCompletion::query()->where(['mission_id' => $mission->id, 'user_id' => $user->id, 'period_key' => $period])->first();
+        if ($previous && in_array($previous->status, [CompletionStatus::Rewarded, CompletionStatus::PendingReview], true)) {
+            throw $this->alreadyClaimed($previous);
+        }
+
         // Verification that talks to Telegram happens before taking any locks.
         if ($mission->verification === MissionVerification::TelegramApi) {
             $this->verifyTelegramMembership($user, $mission);
@@ -127,9 +132,7 @@ class MissionService
                 ->first();
 
             if ($completion && in_array($completion->status, [CompletionStatus::Rewarded, CompletionStatus::PendingReview], true)) {
-                throw new BusinessRuleException(
-                    $completion->status === CompletionStatus::Rewarded ? 'You already completed this mission.' : 'Your submission is being reviewed.',
-                    'already_claimed', 409);
+                throw $this->alreadyClaimed($completion);
             }
 
             $this->assertCapacity($mission);
@@ -285,6 +288,13 @@ class MissionService
                 $this->referrals->onRewardEarned($user, Money::of($entry->available_delta), $entry);
             }
         }
+    }
+
+    private function alreadyClaimed(MissionCompletion $completion): BusinessRuleException
+    {
+        return new BusinessRuleException(
+            $completion->status === CompletionStatus::Rewarded ? 'You already completed this mission.' : 'Your submission is being reviewed.',
+            'already_claimed', 409);
     }
 
     private function assertEligible(User $user, Mission $mission): void
