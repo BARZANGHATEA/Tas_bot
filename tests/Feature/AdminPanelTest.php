@@ -7,6 +7,7 @@ use App\Enums\LedgerType;
 use App\Models\Admin;
 use App\Models\AuditLog;
 use App\Models\FraudFlag;
+use App\Models\GameMatch;
 use App\Models\Mission;
 use App\Models\MissionCompletion;
 use App\Models\ReferralReward;
@@ -81,7 +82,7 @@ class AdminPanelTest extends TestCase
     {
         [$alice, $bob] = $this->seedActivity();
         $withdrawal = Withdrawal::query()->firstOrFail();
-        $match = \App\Models\GameMatch::query()->firstOrFail();
+        $match = GameMatch::query()->firstOrFail();
         $mission = Mission::query()->firstOrFail();
 
         $pages = [

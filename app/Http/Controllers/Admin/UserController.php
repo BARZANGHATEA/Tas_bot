@@ -12,6 +12,7 @@ use App\Models\ReferralReward;
 use App\Models\User;
 use App\Models\Withdrawal;
 use App\Services\AuditLogger;
+use App\Services\FraudService;
 use App\Services\ReferralService;
 use App\Services\Settings;
 use App\Services\StatsService;
@@ -109,7 +110,7 @@ class UserController extends AdminController
         $user->forceFill(['is_flagged' => $data['flagged']])->save();
 
         if ($data['flagged']) {
-            app(\App\Services\FraudService::class)->flag($user, 'manual', 'medium', ['reason' => $data['reason'] ?? null, 'admin_id' => $this->admin()->id]);
+            app(FraudService::class)->flag($user, 'manual', 'medium', ['reason' => $data['reason'] ?? null, 'admin_id' => $this->admin()->id]);
         }
 
         $this->audit->log($data['flagged'] ? 'user.flagged' : 'user.unflagged', $user, ['reason' => $data['reason'] ?? null]);

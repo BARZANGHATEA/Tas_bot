@@ -3,7 +3,6 @@
 namespace App\Services\Telegram;
 
 use Illuminate\Support\Facades\Http;
-use RuntimeException;
 
 /**
  * Thin Bot API client over Laravel's HTTP client (plain HTTPS, no long-running process).

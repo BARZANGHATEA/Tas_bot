@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Exceptions\BusinessRuleException;
 use App\Models\Admin;
 use App\Models\ReferralReward;
 use App\Models\User;
@@ -111,7 +112,7 @@ class ReferralTest extends TestCase
         $this->assertMoney('0', $a->wallet->fresh()->available);
         $this->assertDatabaseHas('audit_logs', ['action' => 'referral.reward_reversed']);
 
-        $this->expectException(\App\Exceptions\BusinessRuleException::class);
+        $this->expectException(BusinessRuleException::class);
         app(ReferralService::class)->reverse($reward->fresh(), 'again', $admin);
     }
 

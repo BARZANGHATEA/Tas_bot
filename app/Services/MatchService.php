@@ -14,8 +14,8 @@ use App\Models\User;
 use App\Services\Telegram\Links;
 use App\Services\Telegram\NotificationService;
 use App\Support\Money;
-use Brick\Math\BigDecimal;
 use Brick\Math\RoundingMode;
+use Carbon\CarbonImmutable;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -86,8 +86,8 @@ class MatchService
 
             $cooldown = $this->settings->int('game.multi.cooldown_seconds');
             $last = GameMatch::query()->where('creator_id', $user->id)->latest('id')->value('created_at');
-            if ($cooldown > 0 && $last && now()->lt(\Carbon\CarbonImmutable::parse($last)->addSeconds($cooldown))) {
-                $wait = (int) ceil(now()->diffInSeconds(\Carbon\CarbonImmutable::parse($last)->addSeconds($cooldown), false));
+            if ($cooldown > 0 && $last && now()->lt(CarbonImmutable::parse($last)->addSeconds($cooldown))) {
+                $wait = (int) ceil(now()->diffInSeconds(CarbonImmutable::parse($last)->addSeconds($cooldown), false));
                 throw new BusinessRuleException("Please wait {$wait}s before creating another match.", 'cooldown', 429, ['retry_after' => $wait]);
             }
 

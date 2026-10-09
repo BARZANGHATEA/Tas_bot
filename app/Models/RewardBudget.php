@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\UniqueConstraintViolationException;
 
 class RewardBudget extends Model
 {
@@ -18,8 +19,20 @@ class RewardBudget extends Model
         ];
     }
 
+    /** The platform has exactly one budget row, always id 1. */
     public static function current(): self
     {
-        return static::query()->firstOrCreate(['id' => 1]);
+        if ($budget = static::query()->find(1)) {
+            return $budget;
+        }
+
+        try {
+            $budget = new static;
+            $budget->forceFill(['id' => 1])->save();
+
+            return $budget;
+        } catch (UniqueConstraintViolationException) {
+            return static::query()->findOrFail(1); // created concurrently
+        }
     }
 }

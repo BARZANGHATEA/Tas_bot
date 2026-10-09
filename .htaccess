@@ -1,0 +1,11 @@
+# Fallback for hosts where the document root cannot point at /public.
+# Prefer setting the domain's document root to the "public" directory.
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    RewriteRule ^(.*)$ public/$1 [L]
+</IfModule>
+
+# Never serve project files directly.
+<FilesMatch "^(\.env.*|composer\.(json|lock)|artisan|phpunit\.xml|.*\.sqlite)$">
+    Require all denied
+</FilesMatch>

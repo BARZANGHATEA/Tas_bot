@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Enums\LedgerType;
 use App\Enums\WithdrawalStatus;
+use App\Exceptions\BusinessRuleException;
 use App\Models\Admin;
 use App\Models\TelegramMessage;
 use App\Models\User;
@@ -99,7 +100,7 @@ class WithdrawalTest extends TestCase
         try {
             $service->reject($withdrawal->fresh(), $this->admin, 'again');
             $this->fail('Second rejection must fail');
-        } catch (\App\Exceptions\BusinessRuleException) {
+        } catch (BusinessRuleException) {
         }
         $this->assertMoney('50', $this->user->wallet->fresh()->available);
         $this->assertMoney('0', $this->user->wallet->fresh()->reserved);
@@ -115,7 +116,7 @@ class WithdrawalTest extends TestCase
         try {
             $service->markPaid($withdrawal, $this->admin, str_repeat('a', 64), null);
             $this->fail('pending → paid must be refused');
-        } catch (\App\Exceptions\BusinessRuleException) {
+        } catch (BusinessRuleException) {
         }
 
         $service->approve($withdrawal, $this->admin);
@@ -139,7 +140,7 @@ class WithdrawalTest extends TestCase
         $this->assertStringNotContainsString('Morgan', $public->text);
 
         // Paid withdrawals cannot be rejected or paid twice, and are published once.
-        $this->expectException(\App\Exceptions\BusinessRuleException::class);
+        $this->expectException(BusinessRuleException::class);
         try {
             $service->reject($paid, $this->admin, 'oops');
         } finally {

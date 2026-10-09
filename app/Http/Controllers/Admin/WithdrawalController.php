@@ -8,6 +8,7 @@ use App\Services\AuditLogger;
 use App\Services\ReferralService;
 use App\Services\WithdrawalService;
 use App\Support\Money;
+use Carbon\CarbonImmutable;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
@@ -122,10 +123,10 @@ class WithdrawalController extends AdminController
             });
         }
         if ($from = $request->query('from')) {
-            $query->where('created_at', '>=', \Carbon\CarbonImmutable::parse($from)->startOfDay());
+            $query->where('created_at', '>=', CarbonImmutable::parse($from)->startOfDay());
         }
         if ($to = $request->query('to')) {
-            $query->where('created_at', '<=', \Carbon\CarbonImmutable::parse($to)->endOfDay());
+            $query->where('created_at', '<=', CarbonImmutable::parse($to)->endOfDay());
         }
         if (is_numeric($request->query('min'))) {
             $query->where('amount', '>=', $request->query('min'));

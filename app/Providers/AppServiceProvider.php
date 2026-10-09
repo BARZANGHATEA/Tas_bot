@@ -3,7 +3,6 @@
 namespace App\Providers;
 
 use App\Contracts\DiceRoller;
-use App\Models\Admin;
 use App\Services\MiniAppAuth;
 use App\Services\SecureDiceRoller;
 use App\Services\Settings;

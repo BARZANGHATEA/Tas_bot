@@ -3,7 +3,6 @@
 namespace App\Services\Telegram;
 
 use App\Services\Settings;
-use RuntimeException;
 
 /** One-click bot configuration: webhook, commands and the Mini App menu button. */
 class TelegramSetupService

@@ -4,6 +4,8 @@ namespace App\Services\Telegram;
 
 use App\Enums\WithdrawalStatus;
 use App\Models\Admin;
+use App\Models\GameMatch;
+use App\Models\GameRound;
 use App\Models\User;
 use App\Models\Withdrawal;
 use App\Services\BudgetService;
@@ -70,7 +72,7 @@ class BotUpdateHandler
 
         if ($payload !== null && str_starts_with($payload, 'm_')) {
             $code = substr($payload, 2);
-            $match = \App\Models\GameMatch::query()->where('invite_code', $code)->first();
+            $match = GameMatch::query()->where('invite_code', $code)->first();
             if ($match) {
                 $this->notifications->raw((string) $user->telegram_id, '🎲 You have been invited to a dice match.',
                     $this->links->openAppKeyboard(['match' => $match->uuid, 'code' => $code], '⚔️ Open match'));
@@ -127,7 +129,7 @@ class BotUpdateHandler
                 "📊 <b>Stats</b>\nUsers: %d (today %d)\nRounds today: %d\nPending withdrawals: %d",
                 User::query()->count(),
                 User::query()->where('created_at', '>=', $this->settings->startOfToday())->count(),
-                \App\Models\GameRound::query()->where('created_at', '>=', $this->settings->startOfToday())->count(),
+                GameRound::query()->where('created_at', '>=', $this->settings->startOfToday())->count(),
                 Withdrawal::query()->where('status', WithdrawalStatus::Pending)->count(),
             ),
             '/pending' => $this->pendingWithdrawalsText(),

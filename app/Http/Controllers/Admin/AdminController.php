@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\Admin;
 use Illuminate\Support\Facades\Auth;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 abstract class AdminController extends Controller
 {
@@ -27,7 +28,7 @@ abstract class AdminController extends Controller
         return preg_match('/^[=+\-@\t\r]/', $value) ? "'".$value : $value;
     }
 
-    protected function csv(string $filename, array $header, iterable $rows): \Symfony\Component\HttpFoundation\StreamedResponse
+    protected function csv(string $filename, array $header, iterable $rows): StreamedResponse
     {
         return response()->streamDownload(function () use ($header, $rows) {
             $out = fopen('php://output', 'w');

@@ -8,6 +8,7 @@ use App\Models\ReferralReward;
 use App\Services\AuditLogger;
 use App\Services\WalletService;
 use App\Support\Money;
+use Carbon\CarbonImmutable;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
@@ -64,10 +65,10 @@ class LedgerController extends AdminController
             $query->where('user_id', (int) preg_replace('/\D/', '', (string) $user));
         }
         if ($from = $request->query('from')) {
-            $query->where('created_at', '>=', \Carbon\CarbonImmutable::parse($from)->startOfDay());
+            $query->where('created_at', '>=', CarbonImmutable::parse($from)->startOfDay());
         }
         if ($to = $request->query('to')) {
-            $query->where('created_at', '<=', \Carbon\CarbonImmutable::parse($to)->endOfDay());
+            $query->where('created_at', '<=', CarbonImmutable::parse($to)->endOfDay());
         }
 
         return $query;

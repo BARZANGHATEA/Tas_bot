@@ -12,6 +12,7 @@ use App\Models\User;
 use App\Models\Withdrawal;
 use App\Services\BudgetService;
 use App\Services\WalletService;
+use Illuminate\Support\Str;
 use LogicException;
 use Tests\TestCase;
 
@@ -136,9 +137,9 @@ class WalletServiceTest extends TestCase
     private function makeWithdrawal(User $user, string $amount): Withdrawal
     {
         return Withdrawal::query()->create([
-            'reference' => 'WD-'.strtoupper(\Illuminate\Support\Str::random(10)),
+            'reference' => 'WD-'.strtoupper(Str::random(10)),
             'user_id' => $user->id,
-            'idempotency_key' => (string) \Illuminate\Support\Str::uuid(),
+            'idempotency_key' => (string) Str::uuid(),
             'full_name' => 'Test User',
             'network' => 'TRC20',
             'address' => 'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t',

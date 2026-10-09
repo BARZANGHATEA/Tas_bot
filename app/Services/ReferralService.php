@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Enums\LedgerType;
 use App\Exceptions\BudgetExhaustedException;
+use App\Exceptions\BusinessRuleException;
 use App\Models\Admin;
 use App\Models\GameRound;
 use App\Models\LedgerEntry;
@@ -204,7 +205,7 @@ class ReferralService
         return DB::transaction(function () use ($reward, $reason, $admin) {
             $reward = ReferralReward::query()->whereKey($reward->id)->lockForUpdate()->firstOrFail();
             if ($reward->status !== 'credited' || ! $reward->ledgerEntry) {
-                throw new \App\Exceptions\BusinessRuleException('Only credited rewards can be reversed.');
+                throw new BusinessRuleException('Only credited rewards can be reversed.');
             }
 
             $this->wallet->reverse($reward->ledgerEntry, 'Referral reward reversed: '.$reason, $admin);

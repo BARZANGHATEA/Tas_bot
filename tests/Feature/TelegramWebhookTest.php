@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\Admin;
 use App\Models\TelegramMessage;
 use App\Models\User;
 use Illuminate\Support\Facades\Http;
@@ -64,7 +65,7 @@ class TelegramWebhookTest extends TestCase
         $this->deliver($this->update(30, '/stats'))->assertOk();
         $this->assertStringNotContainsString('Stats', TelegramMessage::query()->latest('id')->first()->text);
 
-        \App\Models\Admin::factory()->create(['telegram_id' => 777001]);
+        Admin::factory()->create(['telegram_id' => 777001]);
         $this->deliver($this->update(31, '/stats'))->assertOk();
         $this->assertStringContainsString('Stats', TelegramMessage::query()->latest('id')->first()->text);
     }

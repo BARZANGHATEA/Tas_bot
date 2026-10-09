@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Enums\MissionType;
 use App\Enums\MissionVerification;
+use App\Exceptions\BusinessRuleException;
 use App\Models\Admin;
 use App\Models\Mission;
 use App\Models\MissionCompletion;
@@ -66,7 +67,7 @@ class MissionTest extends TestCase
         app(MissionService::class)->approve($completion, $admin);
         $this->assertMoney('0.30', $user->wallet->fresh()->available);
 
-        $this->expectException(\App\Exceptions\BusinessRuleException::class);
+        $this->expectException(BusinessRuleException::class);
         app(MissionService::class)->approve($completion->fresh(), $admin);
     }
 

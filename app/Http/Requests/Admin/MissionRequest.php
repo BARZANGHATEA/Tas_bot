@@ -4,6 +4,8 @@ namespace App\Http\Requests\Admin;
 
 use App\Enums\MissionType;
 use App\Enums\MissionVerification;
+use App\Services\Settings;
+use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Validator;
@@ -81,9 +83,9 @@ class MissionRequest extends FormRequest
         $data['sort_order'] = (int) ($data['sort_order'] ?? 0);
 
         // Dates are entered in the business time zone and stored in UTC.
-        $tz = app(\App\Services\Settings::class)->timezone();
+        $tz = app(Settings::class)->timezone();
         foreach (['starts_at', 'ends_at'] as $key) {
-            $data[$key] = $data[$key] ? \Carbon\CarbonImmutable::parse($data[$key], $tz)->utc() : null;
+            $data[$key] = $data[$key] ? CarbonImmutable::parse($data[$key], $tz)->utc() : null;
         }
 
         return $data;

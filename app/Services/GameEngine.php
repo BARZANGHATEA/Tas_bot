@@ -10,6 +10,7 @@ use App\Models\GameRound;
 use App\Models\LedgerEntry;
 use App\Models\User;
 use App\Support\Money;
+use Carbon\CarbonImmutable;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -153,7 +154,7 @@ class GameEngine
             return 0;
         }
 
-        $readyAt = \Carbon\CarbonImmutable::parse($last)->addSeconds($cooldown);
+        $readyAt = CarbonImmutable::parse($last)->addSeconds($cooldown);
 
         return max(0, (int) ceil(now()->diffInSeconds($readyAt, false)));
     }
