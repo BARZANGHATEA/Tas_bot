@@ -1,0 +1,33 @@
+name: release
+
+# Builds the upload-ready ZIP (with vendor/) for hosts without a terminal.
+# Every push produces a downloadable artifact; pushing a tag like v1.0.0
+# also attaches the ZIP to a GitHub Release.
+on:
+  push:
+    branches: ['**']
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: mbstring, intl
+          coverage: none
+      - run: deploy/build-release.sh dice-rewards-release.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dice-rewards-release
+          path: dice-rewards-release.zip
+      - if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dice-rewards-release.zip

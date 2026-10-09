@@ -28,6 +28,7 @@
             ['admin.settings.edit', 'Settings', 'settings.manage', null, 'admin.settings.*'],
             ['admin.telegram.index', 'Telegram bot', 'telegram.manage', null, 'admin.telegram.*'],
             ['admin.admins.index', 'Administrators', 'admins.manage', null, 'admin.admins.*'],
+            ['admin.system.index', 'System & updates', 'system.manage', null, 'admin.system.*'],
             ['admin.audit.index', 'Audit log', 'audit.view', null, 'admin.audit.*'],
         ],
     ];

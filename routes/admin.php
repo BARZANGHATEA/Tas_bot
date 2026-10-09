@@ -108,6 +108,10 @@ Route::prefix('admin')->name('admin.')->group(function () {
             Route::get('admins/{admin}/edit', [Admin\AdminUserController::class, 'edit'])->name('admins.edit');
             Route::put('admins/{admin}', [Admin\AdminUserController::class, 'update'])->name('admins.update');
         });
+        Route::middleware('admin.can:system.manage')->group(function () {
+            Route::get('system', [Admin\SystemController::class, 'index'])->name('system.index');
+            Route::post('system/run', [Admin\SystemController::class, 'run'])->name('system.run');
+        });
         Route::get('audit', [Admin\AuditController::class, 'index'])->middleware('admin.can:audit.view')->name('audit.index');
     });
 });

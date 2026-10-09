@@ -16,6 +16,7 @@ use Illuminate\Support\Facades\Blade;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\RateLimiter;
+use Illuminate\Support\Facades\URL;
 use Illuminate\Support\ServiceProvider;
 use Throwable;
 
@@ -32,6 +33,13 @@ class AppServiceProvider extends ServiceProvider
     {
         // Mini App API: bearer token → server-side session → player.
         Auth::viaRequest('miniapp-token', fn (Request $request) => app(MiniAppAuth::class)->resolve($request->bearerToken()));
+
+        // Behind shared-hosting proxies PHP may see plain HTTP: generate links from APP_URL.
+        $appUrl = (string) config('app.url');
+        if (str_starts_with($appUrl, 'https://') && ! $this->app->environment('local', 'testing')) {
+            URL::forceRootUrl($appUrl);
+            URL::forceScheme('https');
+        }
 
         $this->configureRateLimiting();
 

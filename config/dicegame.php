@@ -28,6 +28,9 @@ return [
         'dev_auth' => (bool) env('TELEGRAM_DEV_AUTH', false),
     ],
 
+    // Redirect to the web installer until storage/installed.lock exists.
+    'require_install' => (bool) env('INSTALLER_GUARD', true),
+
     // Lifetime of a Mini App session token issued after init-data validation.
     'session_ttl_hours' => (int) env('MINIAPP_SESSION_TTL_HOURS', 12),
 
@@ -71,6 +74,7 @@ return [
         'settings.sensitive' => ['super_admin'],
         'telegram.manage' => ['super_admin'],
         'admins.manage' => ['super_admin'],
+        'system.manage' => ['super_admin'],
         'audit.view' => ['super_admin', 'admin'],
         'reports.export' => ['super_admin', 'admin', 'finance', 'analyst'],
     ],

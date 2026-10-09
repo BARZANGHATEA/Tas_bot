@@ -55,6 +55,11 @@ class InstallApp extends Command
             $this->info("Super administrator {$email} created. Sign in at ".url('/admin'));
         }
 
+        // Same lock the web installer writes: the application is now installed.
+        if (! is_file(storage_path('installed.lock'))) {
+            file_put_contents(storage_path('installed.lock'), json_encode(['installed_at' => now()->toIso8601String(), 'by' => 'cli']));
+        }
+
         if ($this->option('seed')) {
             $this->call('db:seed', ['--class' => 'Database\\Seeders\\MissionSeeder', '--force' => true]);
         }

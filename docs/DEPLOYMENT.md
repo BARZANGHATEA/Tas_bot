@@ -4,6 +4,11 @@ This guide assumes a typical cPanel account with PHP 8.3, MySQL/MariaDB, an
 SSL certificate and (ideally) SSH and cron access. Alternatives are given for
 hosts without SSH or cron.
 
+> **No terminal / SSH?** Use the web installer instead of steps 3–6: upload and extract
+> `dice-rewards-release.zip` (includes `vendor/`), open `https://your-domain/install.php` and fill in the
+> form. Maintenance commands are available afterwards in **Admin → System & updates**.
+> Persian guide: [INSTALL-FA.md](INSTALL-FA.md).
+
 ## 1. Create the Telegram bot
 
 1. Open **@BotFather** → `/newbot` → choose a name and a username. Copy the **token**.

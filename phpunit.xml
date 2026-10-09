@@ -22,6 +22,7 @@
         <env name="APP_KEY" value="base64:dGVzdGluZy1rZXktZm9yLXBocHVuaXQtb25seS0wMDA="/>
         <env name="APP_MAINTENANCE_DRIVER" value="file"/>
         <env name="BCRYPT_ROUNDS" value="4"/>
+        <env name="INSTALLER_GUARD" value="false"/>
         <env name="BROADCAST_CONNECTION" value="null"/>
         <env name="CACHE_STORE" value="array"/>
         <env name="DB_CONNECTION" value="sqlite"/>

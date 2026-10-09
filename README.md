@@ -91,7 +91,17 @@ Key rules enforced in code:
 * HTTPS on your domain (Telegram requires it)
 * Cron (recommended) – alternatives are provided if your host has none
 
-## Quick start (production)
+## Quick install without a terminal (web installer)
+
+For shared hosting **without SSH**: download `dice-rewards-release.zip` (it contains `vendor/`; built by
+`deploy/build-release.sh` or by the *release* GitHub Action), upload and extract it with the File Manager,
+then open **`https://your-domain/install.php`**. The installer checks the server, writes `.env` with generated
+secrets, creates the tables and the super administrator, funds the reward budget, registers the Telegram webhook
+and locks itself. Updates, cache clearing and scheduled tasks are then available in **Admin → System & updates**.
+
+📘 Step-by-step guide in Persian: **[docs/INSTALL-FA.md](docs/INSTALL-FA.md)**
+
+## Quick start with a terminal (production)
 
 The full, click-by-click cPanel guide is in **[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)**. In short:
 
@@ -149,6 +159,7 @@ CI (`.github/workflows/tests.yml`) runs the suite on SQLite and MySQL 8.
 
 ## Documentation
 
+* [docs/INSTALL-FA.md](docs/INSTALL-FA.md) – راهنمای نصب سریع بدون ترمینال (فارسی)
 * [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) – shared hosting / cPanel installation, cron and no-cron options, updates, backups
 * [docs/SECURITY.md](docs/SECURITY.md) – security model, anti-cheat and anti-fraud controls, operator checklist
 * [docs/OPERATIONS.md](docs/OPERATIONS.md) – running the platform day to day: budget, withdrawals, missions, referrals, roles
