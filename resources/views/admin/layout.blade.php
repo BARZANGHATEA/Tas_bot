@@ -51,7 +51,7 @@
 </head>
 <body @if ($reopen) data-reopen-dialog="{{ $reopen }}" @endif>
 <a href="#main" class="skip-link">Skip to content</a>
-@include('admin.partials.icons')
+@include('partials.icons')
 
 <div class="shell">
     <aside class="sidebar" id="sidebar" aria-label="Main navigation">

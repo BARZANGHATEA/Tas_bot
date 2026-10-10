@@ -337,6 +337,7 @@ fieldset.fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
 
 /* ---------- 10. Tables ---------- */
 .table-wrap {
+    position: relative; /* keeps absolutely positioned children (sr-only text) inside the scroll box */
     overflow-x: auto; -webkit-overflow-scrolling: touch;
     /* Edge shadows appear only while there is more table to scroll to. */
     background:
@@ -479,6 +480,9 @@ dialog.modal[open] { animation: modal-in .16s ease-out; }
 .chart-col.is-today .chart-bar { background: var(--primary-hover); }
 .chart-tip { position: absolute; bottom: calc(100% + 6px); left: 50%; transform: translateX(-50%); background: var(--text); color: #fff; font-size: var(--fs-xs); padding: 4px 8px; border-radius: 4px; white-space: nowrap; pointer-events: none; opacity: 0; transition: opacity .1s ease; z-index: 3; }
 .chart-col:hover .chart-tip, .chart-col:focus-visible .chart-tip { opacity: 1; }
+/* Keep tooltips of the edge columns inside the chart. */
+.chart-col:nth-child(-n+2) .chart-tip { left: 0; transform: none; }
+.chart-col:nth-last-child(-n+2) .chart-tip { left: auto; right: 0; transform: none; }
 .chart-xaxis { display: grid; grid-template-columns: 36px 1fr; margin-top: 6px; }
 .chart-xlabels { display: flex; gap: 2px; font-size: 11px; color: var(--text-3); }
 .chart-xlabels span { flex: 1 1 0; min-width: 0; text-align: center; white-space: nowrap; overflow: visible; display: flex; justify-content: center; }

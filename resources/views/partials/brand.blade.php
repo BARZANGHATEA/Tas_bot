@@ -9,10 +9,10 @@
 @endphp
 <style>
     :root {
-        --brand: {{ $color('brand.primary_color', '#7c5cff') }};
-        --accent: {{ $color('brand.accent_color', '#22d3a6') }};
-        --bg: {{ $color('brand.background_color', '#0f1020') }};
-        --surface: {{ $color('brand.surface_color', '#1a1b33') }};
+        --brand: {{ $color('brand.primary_color', '#5b5bd6') }};
+        --accent: {{ $color('brand.accent_color', '#16b981') }};
+        --bg: {{ $color('brand.background_color', '#0e1116') }};
+        --surface: {{ $color('brand.surface_color', '#171b22') }};
         --font: {!! $fonts[$settings->string('brand.font_family', 'system')] ?? $fonts['system'] !!};
     }
 </style>

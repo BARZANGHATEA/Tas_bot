@@ -82,9 +82,14 @@ class AppServiceProvider extends ServiceProvider
         RateLimiter::for('withdraw', fn (Request $r) => Limit::perHour($settings()->int('rate.withdraw_per_hour', 5))->by('withdraw:'.$key($r)));
         RateLimiter::for('miniapp-auth', fn (Request $r) => Limit::perMinute($settings()->int('rate.auth_per_minute', 20))->by('auth:'.$r->ip()));
         RateLimiter::for('webhook', fn (Request $r) => Limit::perMinute(600)->by('webhook'));
+        // Throttled sign-ins go back to the form with a readable message instead of a bare 429 page.
+        $tooManyLogins = fn (Request $r, array $headers) => redirect()->route('admin.login')
+            ->withInput($r->only('email'))
+            ->withErrors(['email' => 'Too many sign-in attempts. Please wait '.ceil(((int) ($headers['Retry-After'] ?? 60)) / 60).' minute(s) and try again.'])
+            ->withHeaders($headers);
         RateLimiter::for('admin-login', fn (Request $r) => [
-            Limit::perMinute(5)->by('admin-login:'.$r->ip()),
-            Limit::perHour(20)->by('admin-login-email:'.strtolower((string) $r->input('email'))),
+            Limit::perMinute(5)->by('admin-login:'.$r->ip())->response($tooManyLogins),
+            Limit::perHour(20)->by('admin-login-email:'.strtolower((string) $r->input('email')))->response($tooManyLogins),
         ]);
         RateLimiter::for('admin-actions', fn (Request $r) => Limit::perMinute(60)->by('admin:'.($r->user('admin')?->id ?: $r->ip())));
     }

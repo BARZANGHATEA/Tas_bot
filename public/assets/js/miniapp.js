@@ -31,6 +31,7 @@
         cooldownTimer: null,
         proofOpen: {},
         playKey: null,
+        errors: {},         // per-screen load errors, shown with a retry button
     };
 
     var view = document.getElementById('view');
@@ -52,6 +53,17 @@
 
     function sleep(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
 
+    function icon(name, cls) {
+        return '<svg class="icon' + (cls ? ' ' + cls : '') + '" aria-hidden="true"><use href="#i-' + name + '"/></svg>';
+    }
+
+    function busy(el, on) {
+        if (!el) return;
+        el.disabled = on;
+        el.classList.toggle('is-loading', on);
+        el.setAttribute('aria-busy', String(on));
+    }
+
     function fmtDate(iso) {
         if (!iso) return '';
         var d = new Date(iso);
@@ -70,11 +82,14 @@
     var toastTimer = null;
     function toast(message, kind) {
         var el = document.getElementById('toast');
-        el.textContent = message;
+        var name = { success: 'check-circle', error: 'x-circle' }[kind] || 'info';
+        el.innerHTML = icon(name) + '<span></span>';
+        el.lastChild.textContent = message;
         el.className = 'toast' + (kind ? ' is-' + kind : '');
+        el.setAttribute('role', kind === 'error' ? 'alert' : 'status');
         el.hidden = false;
         clearTimeout(toastTimer);
-        toastTimer = setTimeout(function () { el.hidden = true; }, 3200);
+        toastTimer = setTimeout(function () { el.hidden = true; }, kind === 'error' ? 5000 : 3200);
     }
 
     function openLink(url) {
@@ -86,7 +101,7 @@
 
     function copy(text) {
         if (navigator.clipboard && navigator.clipboard.writeText) {
-            navigator.clipboard.writeText(text).then(function () { toast('Copied!', 'success'); }, function () { toast(text); });
+            navigator.clipboard.writeText(text).then(function () { toast('Copied to clipboard', 'success'); }, function () { toast(text); });
         } else {
             toast(text);
         }
@@ -102,6 +117,14 @@
         var neg = v < 0n; if (neg) v = -v;
         var whole = v / 1000000n, frac = (v % 1000000n).toString().padStart(6, '0').slice(0, 2);
         return (neg ? '-' : '') + whole.toString() + '.' + frac;
+    }
+
+    // "0.100000" -> "0.10", "0.005000" -> "0.005": two decimals minimum, no trailing zeros beyond that.
+    function trimUsdt(v) {
+        var m = /^(-?\d+)\.(\d+)$/.exec(String(v));
+        if (!m) return String(v === null || v === undefined ? '' : v);
+        var frac = m[2].replace(/0+$/, '');
+        return m[1] + '.' + (frac.length < 2 ? (frac + '00').slice(0, 2) : frac);
     }
 
     // ------------------------------------------------------------------ API
@@ -193,6 +216,7 @@
         stopPolling();
         state.tab = tab;
         state.sub = null;
+        state.errors[tab] = null;
         updateChrome();
         render();
         load(tab);
@@ -218,7 +242,8 @@
 
     function updateChrome() {
         document.querySelectorAll('.tab').forEach(function (b) {
-            b.classList.toggle('is-active', b.dataset.tab === state.tab);
+            if (b.dataset.tab === state.tab) b.setAttribute('aria-current', 'page');
+            else b.removeAttribute('aria-current');
         });
         if (tg && tg.BackButton) {
             if (state.sub) tg.BackButton.show(); else tg.BackButton.hide();
@@ -240,8 +265,11 @@
             referrals: function () { return api('GET', '/referrals').then(function (d) { state.referrals = d; }); },
         };
         if (!loaders[what]) return Promise.resolve();
+        state.errors[what] = null;
         return loaders[what]().then(render).catch(function (err) {
             if (err.code === 'maintenance') return renderMaintenance(err.message);
+            state.errors[what] = err.message || 'This page could not be loaded.';
+            render(); // screens without data switch from the skeleton to an error state
             showError(err);
         });
     }
@@ -271,10 +299,32 @@
         afterRender();
     }
 
+    // Loading placeholder shaped like the content it stands in for.
     function skeleton(n) {
-        var s = '';
-        for (var i = 0; i < (n || 3); i++) s += '<div class="skeleton"></div>';
+        var s = '<p class="sr-only" role="status">Loading…</p>';
+        for (var i = 0; i < (n || 3); i++) {
+            s += '<div class="skeleton" aria-hidden="true"><span class="sk sk-sm"></span><span class="sk ' + (i === 0 ? 'sk-lg' : 'sk-md') + '"></span><span class="sk"></span></div>';
+        }
         return s;
+    }
+
+    function emptyState(iconName, title, text, actionHtml) {
+        return '<div class="empty"><div class="empty-icon">' + icon(iconName) + '</div>' +
+            '<p class="empty-title">' + esc(title) + '</p>' + (text ? '<p>' + esc(text) + '</p>' : '') + (actionHtml || '') + '</div>';
+    }
+
+    function errorState(what) {
+        return '<div class="card state-error" role="alert">' + emptyState('alert', 'Could not load this page', state.errors[what],
+            '<button type="button" class="btn btn-ghost btn-sm" data-action="retry" data-what="' + esc(what) + '">' + icon('refresh', 'icon-sm') + 'Try again</button>') + '</div>';
+    }
+
+    function loadingOr(what, n) {
+        return state.errors[what] ? errorState(what) : skeleton(n);
+    }
+
+    function banner(text, kind) {
+        var name = kind === 'danger' ? 'alert' : (kind === 'warn' ? 'alert' : 'info');
+        return '<div class="banner' + (kind ? ' banner-' + kind : '') + '" role="' + (kind ? 'alert' : 'note') + '">' + icon(name) + '<div>' + esc(text) + '</div></div>';
     }
 
     function footer() {
@@ -286,34 +336,42 @@
     }
 
     function renderMaintenance(message) {
-        view.innerHTML = '<div class="card center" style="margin-top:30px"><div style="font-size:42px">🛠️</div><h2>Maintenance</h2><p class="muted">' + esc(message) + '</p></div>';
+        view.innerHTML = '<div class="card mt-3">' + emptyState('wrench', 'Down for maintenance', message,
+            '<button type="button" class="btn btn-ghost btn-sm" data-action="retry" data-what="' + esc(state.tab) + '">' + icon('refresh', 'icon-sm') + 'Try again</button>') + '</div>';
     }
 
     // ---- Home
 
     function renderHome() {
         var d = state.home;
-        if (!d) return skeleton(4);
+        if (!d) return loadingOr('home', 3);
         var u = d.user, s = d.stats;
 
         var html = '';
-        if (d.home.announcement) html += '<div class="banner">' + esc(d.home.announcement) + '</div>';
-        if (d.restricted) html += '<div class="banner banner-warn">Your account is restricted: playing, claiming and withdrawing are paused. Please contact support.</div>';
+        if (d.home.announcement) html += banner(d.home.announcement);
+        if (d.restricted) html += banner('Your account is restricted: playing, claiming and withdrawing are paused. Please contact support.', 'warn');
 
-        html += '<section class="card card-hero">' +
+        html += '<section class="card card-hero" aria-label="Your balance">' +
             '<div class="profile"><div class="avatar">' + avatarInner(u) + '</div><div style="min-width:0">' +
-            '<p class="muted small" style="margin:0">' + esc(d.home.headline || 'Welcome back') + '</p>' +
+            '<p class="profile-greeting">' + esc(d.home.headline || 'Welcome back') + '</p>' +
             '<h1 class="profile-name">' + esc(u.name) + '</h1>' +
             '<div class="profile-meta">' + (u.username ? '<span>@' + esc(u.username) + '</span>' : '') +
-            '<button class="id-pill" type="button" data-action="copy" data-text="' + esc(u.id) + '" aria-label="Copy your ID">ID ' + esc(u.id) + '</button></div>' +
+            '<button class="id-pill" type="button" data-action="copy" data-text="' + esc(u.id) + '" aria-label="Copy your ID ' + esc(u.id) + '">ID ' + esc(u.id) + icon('copy') + '</button></div>' +
             '</div></div>' +
             '<div class="balance"><div class="balance-label">Available balance</div>' +
             '<div class="balance-value">' + esc(s.available) + ' <small>USDT</small></div>' +
             '<div class="balance-row">' +
-            '<div><span>Pending withdrawal</span><strong>' + esc(s.reserved) + '</strong></div>' +
-            '<div><span>Pending rewards</span><strong>' + esc(s.pending_rewards) + '</strong></div>' +
+            '<div><span>Withdrawing</span><strong>' + esc(s.reserved) + '</strong></div>' +
+            '<div><span>Pending</span><strong>' + esc(s.pending_rewards) + '</strong></div>' +
             '<div><span>Total earned</span><strong>' + esc(s.total_earned) + '</strong></div>' +
             '</div></div></section>';
+
+        html += '<div class="quick">' +
+            '<button type="button" data-action="go" data-tab="games"><span class="q-icon">' + icon('dice') + '</span>Play</button>' +
+            '<button type="button" data-action="go" data-tab="missions"><span class="q-icon">' + icon('target') + '</span>Missions</button>' +
+            '<button type="button" data-action="sub" data-sub="referrals"><span class="q-icon">' + icon('users') + '</span>Invite</button>' +
+            '<button type="button" data-action="go" data-tab="withdraw"><span class="q-icon">' + icon('wallet') + '</span>Withdraw</button>' +
+            '</div>';
 
         html += '<div class="stats">' +
             '<div class="stat"><strong>' + esc(s.games_played) + '</strong><span>Games played</span></div>' +
@@ -321,42 +379,41 @@
             '<div class="stat"><strong>' + esc(s.referrals) + '</strong><span>Referrals</span></div>' +
             '</div>';
 
-        html += '<div class="quick">' +
-            '<button type="button" data-action="go" data-tab="games"><span class="q-icon">🎲</span>Play</button>' +
-            '<button type="button" data-action="go" data-tab="missions"><span class="q-icon">🎯</span>Missions</button>' +
-            '<button type="button" data-action="sub" data-sub="referrals"><span class="q-icon">👥</span>Invite</button>' +
-            '<button type="button" data-action="go" data-tab="withdraw"><span class="q-icon">💸</span>Withdraw</button>' +
-            '</div>';
-
-        html += '<div class="section-title">Recent activity <a href="#" class="small" data-action="sub" data-sub="transactions">See all</a></div>';
+        html += '<h2 class="section-title">Recent activity <button type="button" class="link-btn" data-action="sub" data-sub="transactions">See all</button></h2>';
         html += '<div class="card card-flat">' + txList(d.transactions) + '</div>';
 
         return html + footer();
     }
 
     function txList(items) {
-        if (!items || !items.length) return '<div class="empty">No transactions yet. Roll the dice to get started!</div>';
-        var icons = { game_reward: '🎲', match_reward: '⚔️', referral_reward: '👥', mission_reward: '🎯', withdrawal_reserve: '⏳', withdrawal_release: '↩️', withdrawal_payout: '💸', reward_reversal: '⛔', admin_credit: '➕', admin_debit: '➖' };
+        if (!items || !items.length) return emptyState('activity', 'No activity yet', 'Rewards, withdrawals and adjustments will appear here.',
+            '<button type="button" class="btn btn-primary btn-sm" data-action="go" data-tab="games">' + icon('dice', 'icon-sm') + 'Play a round</button>');
+        var icons = { game_reward: 'dice', match_reward: 'swords', referral_reward: 'users', mission_reward: 'target', withdrawal_reserve: 'clock', withdrawal_release: 'undo', withdrawal_payout: 'arrow-out', reward_reversal: 'x-circle', admin_credit: 'plus', admin_debit: 'minus' };
         return '<div class="list">' + items.map(function (t) {
-            return '<div class="row"><div class="row-icon">' + (icons[t.type] || '•') + '</div>' +
-                '<div class="row-main"><div class="row-title">' + esc(t.label) + '</div><div class="row-sub">' + esc(t.description || '') + ' · ' + esc(fmtDate(t.created_at)) + '</div></div>' +
-                '<div class="' + (t.direction === 'in' ? 'amount-in' : 'amount-out') + ' nowrap">' + esc(t.amount) + '</div></div>';
+            var dir = t.direction === 'in' ? 'in' : 'out';
+            var sub = [t.description, fmtDate(t.created_at)].filter(Boolean).join(' · ');
+            return '<div class="row"><div class="row-icon is-' + dir + '">' + icon(icons[t.type] || 'activity') + '</div>' +
+                '<div class="row-main"><div class="row-title">' + esc(t.label) + '</div><div class="row-sub">' + esc(sub) + '</div></div>' +
+                '<div class="amount amount-' + dir + '">' + esc(t.amount) + '</div></div>';
         }).join('') + '</div>';
     }
 
     function renderTransactions() {
         var html = subHeader('All transactions');
         if (!state.allTx) {
-            api('GET', '/transactions').then(function (d) { state.allTx = d; render(); }).catch(showError);
-            return html + skeleton(3);
+            if (state.errors.transactions) return html + errorState('transactions');
+            api('GET', '/transactions').then(function (d) { state.allTx = d; render(); }).catch(function (err) {
+                state.errors.transactions = err.message; render(); showError(err);
+            });
+            return html + skeleton(2);
         }
         html += '<div class="card card-flat">' + txList(state.allTx.data) + '</div>';
-        if (state.allTx.next_page) html += '<button class="btn btn-ghost btn-block" style="margin-top:12px" type="button" data-action="more-tx">Load more</button>';
+        if (state.allTx.next_page) html += '<button class="btn btn-ghost btn-block" type="button" data-action="more-tx">Load more</button>';
         return html;
     }
 
     function subHeader(title) {
-        return '<div class="subheader"><button type="button" class="back-btn" data-action="back" aria-label="Back">‹</button><h2>' + esc(title) + '</h2></div>';
+        return '<div class="subheader"><button type="button" class="back-btn" data-action="back" aria-label="Back">' + icon('chevron-left') + '</button><h2>' + esc(title) + '</h2></div>';
     }
 
     // ---- Games
@@ -364,11 +421,11 @@
     function renderGames() {
         var g = state.games;
         var html = '<h1 class="screen-title">' + esc(cfg.nav.games) + '</h1>' +
-            '<div class="segmented" role="tablist">' +
-            '<button type="button" class="' + (state.gameMode === 'single' ? 'is-active' : '') + '" data-action="mode" data-mode="single">🎲 Solo</button>' +
-            '<button type="button" class="' + (state.gameMode === 'duel' ? 'is-active' : '') + '" data-action="mode" data-mode="duel">⚔️ Duel</button>' +
+            '<div class="segmented" role="tablist" aria-label="Game mode">' +
+            '<button type="button" role="tab" aria-selected="' + (state.gameMode === 'single') + '" data-action="mode" data-mode="single">' + icon('dice', 'icon-sm') + 'Solo</button>' +
+            '<button type="button" role="tab" aria-selected="' + (state.gameMode === 'duel') + '" data-action="mode" data-mode="duel">' + icon('swords', 'icon-sm') + 'Duel</button>' +
             '</div>';
-        if (!g) return html + skeleton(2);
+        if (!g) return html + loadingOr('games', 2);
         return html + (state.gameMode === 'single' ? renderSingle(g) : renderDuel(g));
     }
 
@@ -380,34 +437,34 @@
         if (state.rolling) cls = 'is-rolling';
 
         var result = '';
-        if (state.rolling) result = '<p class="result-text">Rolling on the server…</p>';
-        else if (last && last.is_win) result = '<p class="result-text win">Doubles! ' + (last.reward_status === 'credited' ? '+' + esc(last.reward) + ' USDT' : 'Daily reward limit reached') + '</p>';
-        else if (last) result = '<p class="result-text loss">' + esc(last.dice[0]) + ' + ' + esc(last.dice[1]) + ' – no doubles this time</p>';
-        else result = '<p class="result-text muted">Roll doubles to win ' + esc(s.reward_display) + ' USDT</p>';
+        if (state.rolling) result = '<p class="result-text idle" role="status">Rolling on the server…</p>';
+        else if (last && last.is_win) result = '<p class="result-text win" role="status">Doubles! ' + (last.reward_status === 'credited' ? '+' + esc(last.reward) + ' USDT' : 'Daily reward limit reached') + '</p>';
+        else if (last) result = '<p class="result-text loss" role="status">' + esc(last.dice[0]) + ' and ' + esc(last.dice[1]) + ' – no doubles this time</p>';
+        else result = '<p class="result-text idle">Roll doubles to win ' + esc(s.reward_display) + ' USDT</p>';
 
         var disabled = !s.enabled || state.rolling;
         var html = '<section class="card">' +
             '<div class="dice-stage">' + dieHtml(dice[0], cls) + dieHtml(dice[1], cls) + '</div>' + result;
 
         if (!s.enabled) {
-            html += '<div class="banner banner-warn">' + (s.maintenance ? 'Games are under maintenance.' : 'This game is currently disabled.') + '</div>';
+            html += banner(s.maintenance ? 'Games are under maintenance.' : 'This game is currently disabled.', 'warn') + '<div class="mt-3"></div>';
         }
-        html += '<button type="button" id="play-btn" class="btn btn-primary btn-block btn-xl" data-action="play"' + (disabled ? ' disabled' : '') + '>Play</button>' +
-            '<p class="server-note">Dice are rolled with a secure random generator on our server. The animation only reveals the result.</p>' +
+        html += '<button type="button" id="play-btn" class="btn btn-primary btn-block btn-xl" data-action="play"' + (disabled ? ' disabled' : '') + '>' + (state.rolling ? 'Rolling…' : 'Play') + '</button>' +
+            '<p class="server-note">' + icon('lock') + '<span>Dice are rolled with a secure random generator on our server. The animation only reveals the result.</span></p>' +
             '</section>';
 
-        html += '<section class="card"><dl class="kv">' +
+        html += '<section class="card" aria-label="Rules"><dl class="kv">' +
             '<dt>Reward for doubles</dt><dd>' + esc(s.reward_display) + ' USDT</dd>' +
             '<dt>Chance to win</dt><dd>1 in 6</dd>' +
             (s.cooldown_seconds ? '<dt>Cooldown</dt><dd>' + esc(s.cooldown_seconds) + 's</dd>' : '') +
             (s.daily_limit ? '<dt>Played today</dt><dd>' + esc(s.played_today) + ' / ' + esc(s.daily_limit) + '</dd>' : '') +
-            '</dl><hr style="border:0;border-top:1px solid var(--line);margin:14px 0"><p class="rules">' + esc(s.rules_text) + '</p></section>';
+            '</dl>' + (s.rules_text ? '<hr class="divider"><p class="rules">' + esc(s.rules_text) + '</p>' : '') + '</section>';
 
-        html += '<div class="section-title">Your last rounds</div><div class="card card-flat">';
-        if (!g.recent_rounds.length) html += '<div class="empty">No rounds yet.</div>';
+        html += '<h2 class="section-title">Your last rounds</h2><div class="card card-flat">';
+        if (!g.recent_rounds.length) html += emptyState('dice', 'No rounds yet', 'Your results will show up here.');
         else html += '<div class="list">' + g.recent_rounds.map(function (r) {
             return '<div class="row">' + diceInline(r.dice) + '<div class="row-main"><div class="row-sub">' + esc(fmtDate(r.created_at)) + '</div></div>' +
-                (r.is_win ? '<span class="badge badge-ok">' + (r.reward_status === 'credited' ? '+' + esc(r.reward) : 'Win') + '</span>' : '<span class="badge">Loss</span>') + '</div>';
+                (r.is_win ? '<span class="badge badge-ok">' + (r.reward_status === 'credited' ? '+' + esc(r.reward) + ' USDT' : 'Win') + '</span>' : '<span class="badge">No doubles</span>') + '</div>';
         }).join('') + '</div>';
         return html + '</div>';
     }
@@ -415,37 +472,37 @@
     function renderDuel(g) {
         var m = g.multi;
         var html = '';
-        if (!m.enabled) return html + '<div class="banner banner-warn">Two-player matches are currently disabled.</div>';
+        if (!m.enabled) return html + banner('Two-player matches are currently disabled.', 'warn');
 
-        var reward = m.reward_mode === 'fixed' ? 'Winner earns ' + m.reward + ' USDT' : (m.reward_mode === 'pooled' ? 'Pool of ' + m.pool + ' USDT split by rounds won' : 'Just for fun – no reward');
-        html += '<section class="card card-hero"><h3 style="margin:0 0 4px">Challenge a friend</h3>' +
-            '<p class="muted small" style="margin:0 0 12px">' + esc(m.rounds) + ' rounds · ' + esc(m.dice_count) + ' dice · ' + esc(reward) + ' · free to play</p>' +
+        var reward = m.reward_mode === 'fixed' ? 'Winner earns ' + trimUsdt(m.reward) + ' USDT' : (m.reward_mode === 'pooled' ? 'Pool of ' + trimUsdt(m.pool) + ' USDT split by rounds won' : 'Just for fun – no reward');
+        html += '<section class="card"><h2 class="card-title">Challenge a player</h2>' +
+            '<p class="card-sub">' + esc(m.rounds) + ' rounds · ' + esc(m.dice_count) + ' dice · ' + esc(reward) + ' · free to play</p>' +
             '<div class="btn-row"><button type="button" class="btn btn-primary" data-action="create-match" data-visibility="public">Public match</button>' +
-            '<button type="button" class="btn btn-ghost" data-action="create-match" data-visibility="private">Private invite</button></div>' +
-            '<form id="invite-form" class="input-group" style="margin-top:10px" autocomplete="off">' +
-            '<input class="input" name="invite" placeholder="@username of a player" maxlength="64" aria-label="Invite by username">' +
-            '<button class="btn btn-accent" type="submit">Invite</button></form>' +
-            '<p class="rules small" style="margin-top:12px">' + esc(m.rules_text) + '</p></section>';
+            '<button type="button" class="btn btn-ghost" data-action="create-match" data-visibility="private">' + icon('lock', 'icon-sm') + 'Private link</button></div>' +
+            '<form id="invite-form" class="mt-3" autocomplete="off" novalidate><label class="field-label" for="invite-input">Or invite by username</label>' +
+            '<div class="input-group"><input class="input" id="invite-input" name="invite" placeholder="@username" maxlength="64" autocapitalize="off" spellcheck="false">' +
+            '<button class="btn btn-ghost" type="submit">' + icon('send', 'icon-sm') + 'Invite</button></div></form>' +
+            (m.rules_text ? '<hr class="divider"><p class="rules small">' + esc(m.rules_text) + '</p>' : '') + '</section>';
 
         var mine = (state.matches && state.matches.mine) || [];
         var active = mine.filter(function (x) { return ['waiting', 'ready', 'playing'].indexOf(x.status) !== -1; });
         var done = mine.filter(function (x) { return ['completed', 'cancelled'].indexOf(x.status) !== -1; }).slice(0, 10);
 
-        html += '<div class="section-title">Your active matches</div><div class="card card-flat">';
-        html += active.length ? '<div class="list">' + active.map(matchRow).join('') + '</div>' : '<div class="empty">No active matches.</div>';
+        html += '<h2 class="section-title">Your active matches</h2><div class="card card-flat">';
+        html += active.length ? '<div class="list">' + active.map(matchRow).join('') + '</div>' : emptyState('swords', 'No active matches', 'Create a match or join an open one below.');
         html += '</div>';
 
         var open = (state.matches && state.matches.open) || [];
-        html += '<div class="section-title">Open public matches <a href="#" class="small" data-action="refresh-matches">Refresh</a></div><div class="card card-flat">';
+        html += '<h2 class="section-title">Open public matches <button type="button" class="link-btn" data-action="refresh-matches">Refresh</button></h2><div class="card card-flat">';
         html += open.length ? '<div class="list">' + open.map(function (o) {
-            return '<div class="row"><div class="row-icon">⚔️</div><div class="row-main"><div class="row-title">' + esc(o.creator) + '</div>' +
+            return '<div class="row"><div class="row-icon">' + icon('swords') + '</div><div class="row-main"><div class="row-title">' + esc(o.creator) + '</div>' +
                 '<div class="row-sub">' + esc(o.rounds) + ' rounds · ' + esc(o.dice_count) + ' dice</div></div>' +
                 '<button class="btn btn-sm btn-primary" type="button" data-action="join-match" data-uuid="' + esc(o.uuid) + '">Join</button></div>';
-        }).join('') + '</div>' : '<div class="empty">No open matches right now. Create one!</div>';
+        }).join('') + '</div>' : emptyState('users', 'No open matches', 'Start a public match and other players can join it.');
         html += '</div>';
 
         if (done.length) {
-            html += '<div class="section-title">History</div><div class="card card-flat"><div class="list">' + done.map(matchRow).join('') + '</div></div>';
+            html += '<h2 class="section-title">History</h2><div class="card card-flat"><div class="list">' + done.map(matchRow).join('') + '</div></div>';
         }
         return html;
     }
@@ -455,10 +512,11 @@
         var badge = m.status === 'completed'
             ? (m.result === 'won' ? '<span class="badge badge-ok">Won</span>' : (m.result === 'tie' ? '<span class="badge">Draw</span>' : '<span class="badge badge-danger">Lost</span>'))
             : (m.can_roll ? '<span class="badge badge-brand">Your turn</span>' : '<span class="badge">' + esc(label) + '</span>');
-        return '<div class="row" data-action="open-match" data-uuid="' + esc(m.uuid) + '" style="cursor:pointer">' +
-            '<div class="row-icon">' + (m.visibility === 'private' ? '🔒' : '⚔️') + '</div>' +
-            '<div class="row-main"><div class="row-title">vs ' + esc(m.opponent ? m.opponent.name : '…') + '</div>' +
-            '<div class="row-sub">' + esc(m.score.you) + '–' + esc(m.score.them) + ' · ' + esc(fmtDate(m.created_at)) + '</div></div>' + badge + '</div>';
+        return '<button type="button" class="row" data-action="open-match" data-uuid="' + esc(m.uuid) + '">' +
+            '<span class="row-icon">' + icon(m.visibility === 'private' ? 'lock' : 'swords') + '</span>' +
+            '<span class="row-main"><span class="row-title" style="display:block">vs ' + esc(m.opponent ? m.opponent.name : 'waiting…') + '</span>' +
+            '<span class="row-sub num" style="display:block">' + esc(m.score.you) + '–' + esc(m.score.them) + ' · ' + esc(fmtDate(m.created_at)) + '</span></span>' + badge +
+            icon('chevron-right', 'icon-sm row-chevron') + '</button>';
     }
 
     function renderMatch() {
@@ -468,19 +526,23 @@
 
         var you = m.you || { name: 'You', initials: '?' };
         var them = m.opponent;
-        html += '<section class="card card-hero"><div class="versus">' +
-            '<div><div class="avatar">' + esc(you.initials) + '</div><div class="versus-name">' + esc(m.is_participant ? 'You' : you.name) + '</div></div>' +
-            '<div class="versus-score">' + esc(m.score.you) + ' : ' + esc(m.score.them) + '</div>' +
-            '<div><div class="avatar" style="opacity:' + (them ? 1 : .4) + '">' + esc(them ? them.initials : '?') + '</div><div class="versus-name">' + esc(them ? them.name : 'Waiting…') + '</div></div>' +
+        html += '<section class="card card-hero" aria-label="Score"><div class="versus">' +
+            '<div><div class="avatar avatar-lg">' + esc(you.initials) + '</div><div class="versus-name">' + esc(m.is_participant ? 'You' : you.name) + '</div></div>' +
+            '<div class="versus-score" aria-label="Score ' + esc(m.score.you) + ' to ' + esc(m.score.them) + '">' + esc(m.score.you) + ' : ' + esc(m.score.them) + '</div>' +
+            '<div><div class="avatar avatar-lg' + (them ? '' : ' is-empty') + '">' + (them ? esc(them.initials) : icon('user')) + '</div><div class="versus-name">' + esc(them ? them.name : 'Waiting…') + '</div></div>' +
             '</div>';
 
-        var status = '';
+        var status = '', statusIcon = 'clock', statusCls = '';
         if (m.status === 'waiting') status = m.is_creator ? 'Waiting for an opponent to join…' : 'Join this match to start playing.';
-        else if (m.status === 'completed') status = m.result === 'won' ? '🏆 You won!' : (m.result === 'tie' ? '🤝 Draw' : (m.result === 'lost' ? 'You lost this one' : 'Match finished'));
-        else if (m.status === 'cancelled') status = m.cancel_reason === 'expired' ? 'This match expired.' : 'This match was cancelled.';
-        else if (m.can_roll) status = 'Round ' + m.current_round + ' of ' + m.total_rounds + ' – your roll!';
+        else if (m.status === 'completed') {
+            status = m.result === 'won' ? 'You won!' : (m.result === 'tie' ? 'Draw' : (m.result === 'lost' ? 'You lost this one' : 'Match finished'));
+            statusIcon = m.result === 'won' ? 'trophy' : 'check-circle';
+            if (m.result === 'won') statusCls = ' is-win';
+        }
+        else if (m.status === 'cancelled') { status = m.cancel_reason === 'expired' ? 'This match expired.' : 'This match was cancelled.'; statusIcon = 'x-circle'; }
+        else if (m.can_roll) { status = 'Round ' + m.current_round + ' of ' + m.total_rounds + ' – your roll'; statusIcon = 'dice'; }
         else if (m.waiting_for_opponent) status = 'Waiting for ' + (them ? them.name : 'your opponent') + ' to roll…';
-        html += '<p class="status-line">' + esc(status) + '</p>';
+        html += '<p class="status-line' + statusCls + '" role="status">' + icon(statusIcon) + '<span>' + esc(status) + '</span></p>';
 
         if (m.status === 'completed' && m.reward_status === 'unfunded') html += '<p class="small muted center">Rewards were unavailable when this match ended (daily limit or budget).</p>';
 
@@ -489,15 +551,15 @@
         html += '</section>';
 
         if (m.invite_link) {
-            html += '<section class="card"><h3 style="margin:0 0 8px">Invite your opponent</h3>' +
-                '<div class="link-box"><code>' + esc(m.invite_link) + '</code><button class="btn btn-sm" type="button" data-action="copy" data-text="' + esc(m.invite_link) + '">Copy</button></div>' +
-                '<div class="btn-row" style="margin-top:10px"><button class="btn btn-accent" type="button" data-action="share" data-url="' + esc(m.invite_link) + '" data-text="Let\'s roll some dice! ⚔️🎲">Share in Telegram</button>' +
-                (m.can_cancel ? '<button class="btn btn-ghost" type="button" data-action="cancel-match">Cancel</button>' : '') + '</div></section>';
+            html += '<section class="card"><h2 class="card-title">Invite your opponent</h2><p class="card-sub">Anyone with this link can join the match.</p>' +
+                '<div class="link-box"><code>' + esc(m.invite_link) + '</code><button class="btn btn-sm btn-ghost" type="button" data-action="copy" data-text="' + esc(m.invite_link) + '">' + icon('copy', 'icon-sm') + 'Copy</button></div>' +
+                '<div class="btn-row mt-3"><button class="btn btn-primary" type="button" data-action="share" data-url="' + esc(m.invite_link) + '" data-text="Let\'s roll some dice! ⚔️🎲">' + icon('share', 'icon-sm') + 'Share</button>' +
+                (m.can_cancel ? '<button class="btn btn-ghost" type="button" data-action="cancel-match">Cancel match</button>' : '') + '</div></section>';
         }
 
         if (m.rounds.length) {
-            html += '<div class="section-title">Rounds</div><div class="card card-flat">' +
-                '<div class="round-row small muted"><div>#</div><div class="center">You</div><div class="center">' + esc(them ? them.name : 'Opponent') + '</div></div>' +
+            html += '<h2 class="section-title">Rounds</h2><div class="card card-flat">' +
+                '<div class="round-row round-head"><div>#</div><div class="center">You</div><div class="center">' + esc(them ? them.name : 'Opponent') + '</div></div>' +
                 m.rounds.map(function (r) {
                     var youWin = r.you && r.them && r.you.total > r.them.total;
                     var themWin = r.you && r.them && r.them.total > r.you.total;
@@ -507,9 +569,9 @@
                 }).join('') + '</div>';
         }
 
-        var rewardText = m.rules.reward_mode === 'fixed' ? 'Winner earns ' + m.rules.reward + ' USDT' : (m.rules.reward_mode === 'pooled' ? m.rules.pool + ' USDT pool split by rounds won' : 'No reward – just for fun');
+        var rewardText = m.rules.reward_mode === 'fixed' ? 'Winner earns ' + trimUsdt(m.rules.reward) + ' USDT' : (m.rules.reward_mode === 'pooled' ? trimUsdt(m.rules.pool) + ' USDT pool split by rounds won' : 'No reward – just for fun');
         var tieText = { extra_round: 'extra rounds on a tie', draw: 'ties end in a draw', split: 'ties split the reward' }[m.rules.tie_rule] || '';
-        html += '<p class="small muted center" style="margin-top:14px">' + esc(m.base_rounds) + ' rounds · ' + esc(m.dice_count) + ' dice · higher total wins the round · ' + esc(tieText) + '<br>' + esc(rewardText) + '</p>';
+        html += '<p class="small muted center">' + esc(m.base_rounds) + ' rounds · ' + esc(m.dice_count) + ' dice · higher total wins the round · ' + esc(tieText) + '<br>' + esc(rewardText) + '</p>';
         return html;
     }
 
@@ -518,28 +580,28 @@
     function renderMissions() {
         var html = '<h1 class="screen-title">' + esc(cfg.nav.missions) + '</h1>';
         var d = state.missions;
-        if (!d) return html + skeleton(3);
-        if (!d.enabled) return html + '<div class="banner banner-warn">Missions are currently unavailable.</div>';
-        if (!d.missions.length) return html + '<div class="card empty">No missions right now. Check back soon!</div>';
+        if (!d) return html + loadingOr('missions', 3);
+        if (!d.enabled) return html + banner('Missions are currently unavailable.', 'warn');
+        if (!d.missions.length) return html + '<div class="card">' + emptyState('target', 'No missions right now', 'New tasks are added regularly – check back soon.') + '</div>';
 
         return html + d.missions.map(function (m) {
             var status = {
                 available: '', started: '<span class="badge badge-brand">Started</span>',
                 pending_review: '<span class="badge badge-warn">In review</span>',
-                rewarded: '<span class="badge badge-ok">✓ Completed</span>',
+                rewarded: '<span class="badge badge-ok">' + icon('check') + 'Completed</span>',
                 rejected: '<span class="badge badge-danger">Rejected</span>',
             }[m.status] || '';
 
             var progress = '';
             if (m.progress) {
                 var pct = m.progress.target ? Math.min(100, Math.round(m.progress.current / m.progress.target * 100)) : 0;
-                progress = '<div class="progress" aria-label="Progress"><span style="width:' + pct + '%"></span></div><div class="small muted">' + esc(m.progress.current) + ' / ' + esc(m.progress.target) + '</div>';
+                progress = '<div class="progress" role="progressbar" aria-label="Progress" aria-valuemin="0" aria-valuemax="' + esc(m.progress.target) + '" aria-valuenow="' + esc(m.progress.current) + '"><span style="width:' + pct + '%"></span></div><div class="small muted num">' + esc(m.progress.current) + ' / ' + esc(m.progress.target) + '</div>';
             }
 
             var actions = '';
             var done = m.status === 'rewarded' || m.status === 'pending_review';
             if (!done) {
-                if (m.action_url) actions += '<button class="btn btn-sm btn-ghost" type="button" data-action="mission-open" data-id="' + m.id + '">Open</button>';
+                if (m.action_url) actions += '<button class="btn btn-sm btn-ghost" type="button" data-action="mission-open" data-id="' + m.id + '">' + icon('external', 'icon-sm') + 'Open</button>';
                 if (m.needs_proof) {
                     actions += state.proofOpen[m.id]
                         ? ''
@@ -551,17 +613,20 @@
 
             var proof = '';
             if (m.needs_proof && state.proofOpen[m.id] && !done) {
-                proof = '<form class="proof-form" data-id="' + m.id + '" style="margin-top:10px">' +
-                    '<textarea class="input" name="proof" maxlength="500" required placeholder="Your username / link so a moderator can verify"></textarea>' +
-                    '<button class="btn btn-primary btn-block" style="margin-top:8px" type="submit">Send for review</button></form>';
+                proof = '<form class="proof-form mt-3" data-id="' + m.id + '" novalidate>' +
+                    '<label class="field-label" for="proof-' + m.id + '">Proof for the moderator</label>' +
+                    '<textarea class="input" id="proof-' + m.id + '" name="proof" maxlength="500" required placeholder="Your username or a link so a moderator can verify"></textarea>' +
+                    '<div class="btn-row mt-2"><button class="btn btn-ghost" type="button" data-action="mission-proof-cancel" data-id="' + m.id + '">Cancel</button>' +
+                    '<button class="btn btn-primary" type="submit">Send for review</button></div></form>';
             }
 
-            return '<article class="card mission"><div class="mission-icon">' + (m.image_url ? '<img src="' + esc(m.image_url) + '" alt="">' : esc(m.icon || '🎯')) + '</div>' +
-                '<div><p class="mission-title">' + esc(m.title) + '</p><p class="mission-desc">' + esc(m.description || '') + '</p>' + progress +
-                (m.reject_reason ? '<p class="small" style="color:var(--danger)">Reason: ' + esc(m.reject_reason) + '</p>' : '') +
-                '<div class="mission-footer"><span class="reward-chip">+' + esc(m.reward) + ' USDT</span>' + status +
+            return '<article class="card mission"><div class="mission-icon" aria-hidden="true">' + (m.image_url ? '<img src="' + esc(m.image_url) + '" alt="">' : (m.icon ? esc(m.icon) : icon('target'))) + '</div>' +
+                '<div style="min-width:0"><div class="mission-head"><h2 class="mission-title">' + esc(m.title) + '</h2>' + status + '</div>' +
+                (m.description ? '<p class="mission-desc">' + esc(m.description) + '</p>' : '') + progress +
+                (m.reject_reason ? '<p class="small" style="color:var(--danger)">Not approved: ' + esc(m.reject_reason) + '</p>' : '') +
+                '<div class="mission-footer mt-2"><span class="reward-chip">+' + esc(m.reward) + ' USDT</span>' +
                 '<span class="btn-row" style="flex:0 0 auto">' + actions + '</span></div>' + proof +
-                '<p class="small muted" style="margin:8px 0 0">' + esc(m.verification_label) + (m.repeat === 'daily' ? ' · resets daily' : '') + '</p></div></article>';
+                '<p class="mission-meta">' + esc(m.verification_label) + (m.repeat === 'daily' ? ' · resets daily' : '') + '</p></div></article>';
         }).join('') + footer();
     }
 
@@ -570,68 +635,127 @@
     function renderWithdraw() {
         var html = '<h1 class="screen-title">' + esc(cfg.nav.withdraw) + '</h1>';
         var d = state.withdrawals;
-        if (!d) return html + skeleton(3);
+        if (!d) return html + loadingOr('withdraw', 2);
         var s = d.summary;
 
-        html += '<section class="card card-hero"><div class="balance-label">Available to withdraw</div>' +
+        html += '<section class="card card-hero" aria-label="Withdrawable balance"><div class="balance-label">Available to withdraw</div>' +
             '<div class="balance-value">' + esc(s.available) + ' <small>USDT</small></div>' +
-            '<div class="small muted">In progress: ' + esc(s.reserved) + ' USDT · Min ' + esc(s.min) + ' · Max ' + esc(s.max) + '</div></section>';
+            '<div class="balance-meta"><span>In progress <strong>' + esc(s.reserved) + '</strong></span><span>Min <strong>' + esc(s.min) + '</strong></span><span>Max <strong>' + esc(s.max) + '</strong></span></div></section>';
 
         if (!s.enabled) {
-            html += '<div class="banner banner-warn" style="margin-top:12px">Withdrawals are temporarily unavailable.</div>';
+            html += banner('Withdrawals are temporarily unavailable.', 'warn');
         } else if (s.eligibility) {
-            html += '<div class="banner banner-warn" style="margin-top:12px">' + esc(s.eligibility) + '</div>';
+            html += banner(s.eligibility, 'warn');
         } else if (!s.networks.length) {
-            html += '<div class="banner banner-warn" style="margin-top:12px">No payout network is available right now.</div>';
+            html += banner('No payout network is available right now.', 'warn');
         } else {
-            html += '<section class="card"><form id="withdraw-form" autocomplete="off" novalidate>' +
-                '<label class="field"><span>Network</span><select class="input" name="network" id="wd-network">' +
+            html += '<section class="card" aria-labelledby="wd-title"><h2 class="card-title" id="wd-title">New withdrawal</h2><p class="card-sub">Reviewed by our team, then paid manually to your wallet.</p>' +
+                '<form id="withdraw-form" autocomplete="off" novalidate>' +
+                '<div class="field"><label class="field-label" for="wd-network">Network</label><select class="input" name="network" id="wd-network" aria-describedby="wd-network-hint">' +
                 s.networks.map(function (n) { return '<option value="' + esc(n.code) + '">' + esc(n.name) + '</option>'; }).join('') + '</select>' +
-                '<div class="field-hint" id="wd-network-hint"></div></label>' +
-                '<label class="field"><span>Recipient full name</span><input class="input" name="full_name" maxlength="120" required autocomplete="name"></label>' +
-                '<label class="field"><span>USDT wallet address</span><input class="input mono" name="address" maxlength="128" required spellcheck="false" autocapitalize="off"></label>' +
-                '<label class="field"><span>Amount (USDT)</span><div class="input-group"><input class="input" name="amount" inputmode="decimal" placeholder="0.00" required>' +
-                '<button class="btn btn-ghost" type="button" data-action="wd-max">Max</button></div></label>' +
-                '<div class="summary-box small" id="wd-summary"></div>' +
-                '<label class="field"><span>Note (optional)</span><textarea class="input" name="note" maxlength="500"></textarea></label>' +
-                '<div class="banner banner-danger small">⚠️ ' + esc(s.warning) + '</div>' +
-                '<label class="check"><input type="checkbox" name="confirm" value="1"> <span>I confirm the network and address are correct and compatible with USDT.</span></label>' +
-                '<button class="btn btn-primary btn-block btn-xl" type="submit">Request withdrawal</button>' +
-                '<p class="server-note">Requests are reviewed by our team. The amount is reserved until the request is paid or returned.</p>' +
+                '<div class="field-hint" id="wd-network-hint"></div></div>' +
+                '<div class="field"><label class="field-label" for="wd-name">Recipient full name</label><input class="input" id="wd-name" name="full_name" maxlength="120" required autocomplete="name"></div>' +
+                '<div class="field"><label class="field-label" for="wd-address">USDT wallet address</label><input class="input mono" id="wd-address" name="address" maxlength="128" required spellcheck="false" autocapitalize="off" autocorrect="off"></div>' +
+                '<div class="field"><label class="field-label" for="wd-amount">Amount (USDT)</label><div class="input-group"><input class="input num" id="wd-amount" name="amount" inputmode="decimal" placeholder="0.00" required>' +
+                '<button class="btn btn-ghost" type="button" data-action="wd-max">Max</button></div></div>' +
+                '<div class="summary-box" id="wd-summary" aria-live="polite"></div>' +
+                '<div class="field"><label class="field-label" for="wd-note">Note <span class="opt">(optional)</span></label><textarea class="input" id="wd-note" name="note" maxlength="500"></textarea></div>' +
+                banner(s.warning, 'danger') +
+                '<label class="check mt-3"><input type="checkbox" name="confirm" value="1"> <span>I confirm the network and address are correct and compatible with USDT.</span></label>' +
+                '<button class="btn btn-primary btn-block btn-xl" type="submit">Review withdrawal</button>' +
+                '<p class="server-note">' + icon('lock') + '<span>The amount is reserved until the request is paid or returned to your balance.</span></p>' +
                 '</form></section>';
         }
 
-        html += '<div class="section-title">History</div><div class="card card-flat">';
-        if (!d.history.length) html += '<div class="empty">No withdrawals yet.</div>';
+        html += '<h2 class="section-title">History</h2><div class="card card-flat">';
+        if (!d.history.length) html += emptyState('wallet', 'No withdrawals yet', 'Your requests and their status will appear here.');
         else html += '<div class="list">' + d.history.map(function (w) {
             var cls = { paid: 'badge-ok', rejected: 'badge-danger', cancelled: '', pending: 'badge-warn', approved: 'badge-brand', processing: 'badge-brand' }[w.status] || '';
-            return '<div class="row"><div class="row-icon">💸</div><div class="row-main">' +
-                '<div class="row-title">' + esc(w.amount) + ' USDT · ' + esc(w.network) + '</div>' +
-                '<div class="row-sub">' + esc(w.reference) + ' · ' + esc(w.address) + ' · ' + esc(fmtDate(w.created_at)) + '</div>' +
-                (w.reject_reason ? '<div class="row-sub" style="color:var(--danger)">' + esc(w.reject_reason) + '</div>' : '') +
-                (w.tx_hash ? '<div class="row-sub mono">Tx ' + esc(w.tx_hash.slice(0, 10)) + '…</div>' : '') +
-                '</div><div style="text-align:right"><span class="badge ' + cls + '">' + esc(w.status_label) + '</span>' +
-                (w.can_cancel ? '<br><button class="btn btn-sm btn-ghost" style="margin-top:6px" type="button" data-action="wd-cancel" data-ref="' + esc(w.reference) + '">Cancel</button>' : '') +
-                '</div></div>';
+            return '<div class="wd-item"><div class="wd-top"><div style="min-width:0">' +
+                '<div class="wd-amount">' + esc(w.amount) + ' USDT · ' + esc(w.network) + '</div>' +
+                '<div class="row-sub">' + esc(w.reference) + ' · ' + esc(fmtDate(w.created_at)) + '</div>' +
+                '<div class="row-sub mono">' + esc(w.address) + '</div></div>' +
+                '<span class="badge ' + cls + '">' + esc(w.status_label) + '</span></div>' +
+                wdSteps(w.status) +
+                (w.reject_reason ? '<p class="wd-note is-danger">' + esc(w.reject_reason) + '</p>' : '') +
+                (w.tx_hash ? '<p class="wd-note muted">Transaction <span class="mono">' + esc(w.tx_hash.slice(0, 10)) + '…</span> <button type="button" class="link-btn" data-action="copy" data-text="' + esc(w.tx_hash) + '">Copy</button></p>' : '') +
+                (w.can_cancel ? '<button class="btn btn-sm btn-ghost mt-2" type="button" data-action="wd-cancel" data-ref="' + esc(w.reference) + '">Cancel request</button>' : '') +
+                '</div>';
         }).join('') + '</div>';
         return html + '</div>' + footer();
+    }
+
+    // Progress of an open or paid request; rejected and cancelled ones show their badge only.
+    function wdSteps(status) {
+        var reached = { pending: 1, approved: 2, processing: 2, paid: 4 }[status];
+        if (!reached) return '';
+        var labels = ['Requested', 'Approved', 'Sending', 'Paid'];
+        return '<ol class="steps" aria-label="Withdrawal progress">' + labels.map(function (label, i) {
+            var cls = i < reached ? 'is-done' : (i === reached ? 'is-current' : '');
+            return '<li class="step ' + cls + '"' + (i === reached ? ' aria-current="step"' : '') + '>' + label + '</li>';
+        }).join('') + '</ol>';
+    }
+
+    // Client-side estimate only; the server calculates the real fee.
+    function withdrawQuote(form) {
+        var nets = state.withdrawals.summary.networks;
+        var net = nets.filter(function (n) { return n.code === form.network.value; })[0];
+        var amount = toMicro(form.amount.value.replace(',', '.'));
+        if (!net || amount === null || amount === 0n) return { net: net, amount: null };
+        var fee = toMicro(net.fee_fixed) + amount * toMicro(net.fee_percent || '0') / 100000000n;
+        var receive = amount - fee;
+        return { net: net, amount: amount, fee: fee, receive: receive > 0n ? receive : 0n };
     }
 
     function updateWithdrawSummary() {
         var form = document.getElementById('withdraw-form');
         if (!form || !state.withdrawals) return;
-        var nets = state.withdrawals.summary.networks;
-        var net = nets.filter(function (n) { return n.code === form.network.value; })[0];
+        var q = withdrawQuote(form);
         var hint = document.getElementById('wd-network-hint');
-        if (net) hint.textContent = 'Fee: ' + net.fee_fixed + ' USDT' + (Number(net.fee_percent) ? ' + ' + net.fee_percent + '%' : '') + ' · Min ' + net.min + (net.max ? ' · Max ' + net.max : '');
+        if (q.net) hint.textContent = 'Fee ' + q.net.fee_fixed + ' USDT' + (Number(q.net.fee_percent) ? ' + ' + q.net.fee_percent + '%' : '') + ' · Min ' + q.net.min + (q.net.max ? ' · Max ' + q.net.max : '');
 
         var box = document.getElementById('wd-summary');
-        var amount = toMicro(form.amount.value);
-        if (!net || amount === null || amount === 0n) { box.innerHTML = '<span class="muted">Enter an amount to see the fee and the amount you receive.</span>'; return; }
-        var fee = toMicro(net.fee_fixed) + amount * toMicro(net.fee_percent || '0') / 100000000n;
-        var net_ = amount - fee;
-        box.innerHTML = '<dl class="kv"><dt>Requested</dt><dd>' + esc(fromMicro(amount)) + ' USDT</dd><dt>Network fee (estimate)</dt><dd>' + esc(fromMicro(fee)) + ' USDT</dd>' +
-            '<dt>You receive (estimate)</dt><dd>' + esc(net_ > 0n ? fromMicro(net_) : '0.00') + ' USDT</dd><dt>Network</dt><dd>' + esc(net.name) + '</dd></dl>';
+        if (q.amount === null) { box.innerHTML = '<span class="muted">Enter an amount to see the fee and what you receive.</span>'; return; }
+        box.innerHTML = quoteHtml(q);
+    }
+
+    function quoteHtml(q, extra) {
+        return '<dl class="kv"><dt>Requested</dt><dd>' + esc(fromMicro(q.amount)) + ' USDT</dd>' +
+            '<dt>Network fee (estimate)</dt><dd>−' + esc(fromMicro(q.fee)) + ' USDT</dd>' +
+            '<dt class="kv-total">You receive (estimate)</dt><dd class="kv-total">' + esc(fromMicro(q.receive)) + ' USDT</dd>' + (extra || '') + '</dl>';
+    }
+
+    function setFieldError(form, name, message) {
+        var input = form.elements[name];
+        if (!input) return;
+        var wrap = input.closest('.field, .check');
+        var id = 'err-' + name;
+        var old = document.getElementById(id);
+        if (old) old.remove();
+        if (!message) { input.removeAttribute('aria-invalid'); input.removeAttribute('aria-errormessage'); return; }
+        input.setAttribute('aria-invalid', 'true');
+        input.setAttribute('aria-errormessage', id);
+        var el = document.createElement('div');
+        el.className = 'field-error'; el.id = id; el.textContent = message;
+        if (wrap.classList.contains('check')) wrap.insertAdjacentElement('afterend', el); else wrap.appendChild(el);
+    }
+
+    function validateWithdraw(form, payload) {
+        var errors = {};
+        if (!payload.full_name) errors.full_name = 'Enter the recipient\'s full name.';
+        if (!payload.address) errors.address = 'Enter your USDT wallet address.';
+        var amount = toMicro(payload.amount);
+        var summary = state.withdrawals.summary;
+        var net = summary.networks.filter(function (n) { return n.code === payload.network; })[0];
+        if (amount === null || amount === 0n || !/^\d+(\.\d{0,6})?$/.test(payload.amount)) errors.amount = 'Enter an amount, for example 10 or 10.50.';
+        else if (net && net.min && amount < toMicro(net.min)) errors.amount = 'The minimum for ' + net.name + ' is ' + net.min + ' USDT.';
+        else if (net && net.max && amount > toMicro(net.max)) errors.amount = 'The maximum for ' + net.name + ' is ' + net.max + ' USDT.';
+        else if (summary.available_exact && amount > toMicro(summary.available_exact)) errors.amount = 'This is more than your available balance.';
+        if (!payload.confirm) errors.confirm = 'Please confirm the network and address.';
+        ['full_name', 'address', 'amount', 'confirm'].forEach(function (f) { setFieldError(form, f, errors[f]); });
+        var first = Object.keys(errors)[0];
+        if (first) form.elements[first].focus();
+        return !first;
     }
 
     // ---- Referrals
@@ -639,38 +763,42 @@
     function renderReferrals() {
         var html = subHeader('Invite friends');
         var r = state.referrals;
-        if (!r) { load('referrals'); return html + skeleton(3); }
+        if (!r) {
+            if (state.errors.referrals) return html + errorState('referrals');
+            load('referrals');
+            return html + skeleton(3);
+        }
 
-        html += '<section class="card card-hero"><h3 style="margin:0 0 6px">Your invite link</h3>' +
-            '<div class="link-box"><code>' + esc(r.link) + '</code><button class="btn btn-sm" type="button" data-action="copy" data-text="' + esc(r.link) + '">Copy</button></div>' +
-            '<button class="btn btn-primary btn-block" style="margin-top:12px" type="button" data-action="share-url" data-url="' + esc(r.share_url) + '">Share with friends</button>' +
-            (r.active ? '' : '<p class="small" style="color:var(--warn)">The referral campaign is currently paused – new rewards are not being paid.</p>') +
+        if (!r.active) html += banner('The referral campaign is currently paused – new rewards are not being paid.', 'warn');
+        html += '<section class="card"><h2 class="card-title">Your invite link</h2><p class="card-sub">Friends who join with this link are added to your team.</p>' +
+            '<div class="link-box"><code>' + esc(r.link) + '</code><button class="btn btn-sm btn-ghost" type="button" data-action="copy" data-text="' + esc(r.link) + '">' + icon('copy', 'icon-sm') + 'Copy</button></div>' +
+            '<button class="btn btn-primary btn-block mt-3" type="button" data-action="share-url" data-url="' + esc(r.share_url) + '">' + icon('share', 'icon-sm') + 'Share with friends</button>' +
             '</section>';
 
         html += '<div class="stats"><div class="stat"><strong>' + esc(r.direct_count) + '</strong><span>Invited</span></div>' +
             '<div class="stat"><strong>' + esc(r.qualified_count) + '</strong><span>Qualified</span></div>' +
             '<div class="stat"><strong>' + esc(r.earned) + '</strong><span>Earned USDT</span></div></div>';
 
-        html += '<div class="section-title">How rewards work</div><section class="card">' +
+        html += '<h2 class="section-title">How rewards work</h2><section class="card">' +
             '<table class="levels"><thead><tr><th>Level</th><th>Bonus when qualified</th><th>Share of rewards</th></tr></thead><tbody>' +
             r.levels.map(function (l) { return '<tr><td>' + esc(l.level) + '</td><td>' + esc(l.fixed) + ' USDT</td><td>' + esc(l.percent) + '%</td></tr>'; }).join('') +
-            '</tbody></table><p class="small muted">A friend qualifies after playing ' + esc(r.qualification.min_games) + ' games' +
+            '</tbody></table><p class="small muted mt-3">A friend qualifies after playing ' + esc(r.qualification.min_games) + ' games' +
             (r.qualification.min_age_hours ? ' and being a member for ' + esc(r.qualification.min_age_hours) + ' hours' : '') + '.</p>' +
             '<p class="small muted" style="margin:0">' + esc(r.disclosure) + '</p></section>';
 
-        html += '<div class="section-title">Friends</div><div class="card card-flat">';
+        html += '<h2 class="section-title">Friends</h2><div class="card card-flat">';
         html += r.friends.length ? '<div class="list">' + r.friends.map(function (f) {
-            return '<div class="row"><div class="row-icon">👤</div><div class="row-main"><div class="row-title">' + esc(f.name) + '</div><div class="row-sub">Joined ' + esc(fmtDate(f.joined_at)) + '</div></div>' +
-                (f.qualified ? '<span class="badge badge-ok">Qualified</span>' : '<span class="badge">Not yet</span>') + '</div>';
-        }).join('') + '</div>' : '<div class="empty">Nobody yet – share your link!</div>';
+            return '<div class="row"><div class="row-icon">' + icon('user') + '</div><div class="row-main"><div class="row-title">' + esc(f.name) + '</div><div class="row-sub">Joined ' + esc(fmtDate(f.joined_at)) + '</div></div>' +
+                (f.qualified ? '<span class="badge badge-ok">' + icon('check') + 'Qualified</span>' : '<span class="badge">Not yet</span>') + '</div>';
+        }).join('') + '</div>' : emptyState('users', 'No friends yet', 'Share your link – friends appear here as soon as they join.');
         html += '</div>';
 
-        html += '<div class="section-title">Referral rewards</div><div class="card card-flat">';
+        html += '<h2 class="section-title">Referral rewards</h2><div class="card card-flat">';
         html += r.rewards.length ? '<div class="list">' + r.rewards.map(function (x) {
-            var badge = x.status === 'credited' ? '<span class="amount-in">+' + esc(x.amount) + '</span>' : '<span class="badge">' + esc(x.status) + '</span>';
-            return '<div class="row"><div class="row-icon">L' + esc(x.level) + '</div><div class="row-main"><div class="row-title">' + (x.event === 'qualification' ? 'Qualification bonus' : 'Reward share') + '</div>' +
-                '<div class="row-sub">' + esc(x.from || '') + ' · ' + esc(fmtDate(x.created_at)) + '</div></div>' + badge + '</div>';
-        }).join('') + '</div>' : '<div class="empty">No referral rewards yet.</div>';
+            var badge = x.status === 'credited' ? '<span class="amount amount-in">+' + esc(x.amount) + '</span>' : '<span class="badge">' + esc(x.status) + '</span>';
+            return '<div class="row"><div class="row-icon" aria-label="Level ' + esc(x.level) + '">L' + esc(x.level) + '</div><div class="row-main"><div class="row-title">' + (x.event === 'qualification' ? 'Qualification bonus' : 'Reward share') + '</div>' +
+                '<div class="row-sub">' + esc([x.from, fmtDate(x.created_at)].filter(Boolean).join(' · ')) + '</div></div>' + badge + '</div>';
+        }).join('') + '</div>' : emptyState('gift', 'No referral rewards yet', 'You earn when invited friends qualify and play.');
         return html + '</div>';
     }
 
@@ -689,6 +817,14 @@
         share: function (el) { openLink('https://t.me/share/url?url=' + encodeURIComponent(el.dataset.url) + '&text=' + encodeURIComponent(el.dataset.text || '')); },
         'share-url': function (el) { openLink(el.dataset.url); },
         mode: function (el) { state.gameMode = el.dataset.mode; render(); },
+        retry: function (el) {
+            var what = el.dataset.what;
+            state.errors[what] = null;
+            if (what === 'transactions') { state.allTx = null; render(); return; }
+            if (what === 'referrals') { state.referrals = null; render(); return; }
+            render();
+            load(what);
+        },
 
         play: function () {
             if (state.rolling) return;
@@ -725,13 +861,13 @@
         },
 
         'create-match': function (el) {
-            el.disabled = true;
+            busy(el, true);
             api('POST', '/matches', { visibility: el.dataset.visibility }).then(function (res) {
                 state.match = res.match;
                 haptic('success');
                 openSub('match');
                 startPolling();
-            }).catch(function (e) { el.disabled = false; showError(e); });
+            }).catch(function (e) { busy(el, false); showError(e); });
         },
         'refresh-matches': function () { load('games'); },
         'open-match': function (el) { openMatch(el.dataset.uuid, null); },
@@ -750,7 +886,7 @@
             }).catch(function (e) { state.rolling = false; render(); showError(e); refreshMatch(); });
         },
         'cancel-match': function () {
-            confirmDialog('Cancel this match?', function () {
+            confirmDialog({ title: 'Cancel this match?', message: 'Your opponent will no longer be able to join.', confirm: 'Cancel match', cancel: 'Keep', danger: true }, function () {
                 api('POST', '/matches/' + state.match.uuid + '/cancel', {}).then(function (res) {
                     state.match = res.match; render(); toast('Match cancelled');
                 }).catch(showError);
@@ -766,33 +902,41 @@
             }).catch(showError);
         },
         'mission-claim': function (el) {
-            el.disabled = true;
+            busy(el, true);
             api('POST', '/missions/' + el.dataset.id + '/claim', {}).then(function (res) {
                 haptic('success'); toast(res.message, 'success');
                 return load('missions').then(function () { return load('home'); });
-            }).catch(function (e) { el.disabled = false; showError(e); });
+            }).catch(function (e) { busy(el, false); showError(e); });
         },
-        'mission-proof': function (el) { state.proofOpen[el.dataset.id] = true; render(); },
+        'mission-proof': function (el) {
+            state.proofOpen[el.dataset.id] = true;
+            render();
+            var area = document.getElementById('proof-' + el.dataset.id);
+            if (area) area.focus();
+        },
+        'mission-proof-cancel': function (el) { delete state.proofOpen[el.dataset.id]; render(); },
 
         'wd-max': function () {
             var f = document.getElementById('withdraw-form');
             f.amount.value = state.withdrawals.summary.available_exact.replace(/\.?0+$/, '');
+            setFieldError(f, 'amount', null);
             updateWithdrawSummary();
         },
         'wd-cancel': function (el) {
-            confirmDialog('Cancel this withdrawal request? The amount returns to your balance.', function () {
+            confirmDialog({ title: 'Cancel this request?', message: 'The reserved amount returns to your available balance.', confirm: 'Cancel request', cancel: 'Keep', danger: true }, function () {
                 api('POST', '/withdrawals/' + encodeURIComponent(el.dataset.ref) + '/cancel', {}).then(function () {
                     toast('Request cancelled', 'success'); load('withdraw'); load('home');
                 }).catch(showError);
             });
         },
-        'more-tx': function () {
+        'more-tx': function (el) {
             var next = state.allTx.next_page;
+            busy(el, true);
             api('GET', '/transactions?page=' + next).then(function (d) {
                 state.allTx.data = state.allTx.data.concat(d.data);
                 state.allTx.next_page = d.next_page;
                 render();
-            }).catch(showError);
+            }).catch(function (e) { busy(el, false); showError(e); });
         },
     };
 
@@ -800,12 +944,49 @@
         return state.missions.missions.filter(function (m) { return String(m.id) === String(id); })[0];
     }
 
-    function confirmDialog(message, onYes) {
-        if (tg && tg.showConfirm && tg.platform !== 'unknown') {
-            tg.showConfirm(message, function (ok) { if (ok) onYes(); });
-        } else if (window.confirm(message)) {
-            onYes();
+    // Bottom-sheet confirmation (native <dialog>: focus trap, Esc and the
+    // Telegram back button close it). opts: title, message, html, confirm, cancel, danger.
+    var sheet = document.getElementById('sheet');
+    var sheetAction = null, sheetReturn = null;
+
+    function confirmDialog(opts, onYes) {
+        if (!sheet || typeof sheet.showModal !== 'function') {
+            if (window.confirm(opts.title + (opts.message ? '\n\n' + opts.message : ''))) onYes();
+            return;
         }
+        document.getElementById('sheet-title').textContent = opts.title;
+        var text = document.getElementById('sheet-text');
+        text.textContent = opts.message || '';
+        text.hidden = !opts.message;
+        var body = document.getElementById('sheet-body');
+        body.innerHTML = opts.html || '';
+        body.hidden = !opts.html;
+        var ok = sheet.querySelector('[data-sheet="ok"]'), cancel = sheet.querySelector('[data-sheet="cancel"]');
+        ok.textContent = opts.confirm || 'Confirm';
+        ok.className = 'btn ' + (opts.danger ? 'btn-danger' : 'btn-primary');
+        cancel.textContent = opts.cancel || 'Cancel';
+        sheetAction = onYes;
+        sheetReturn = document.activeElement;
+        sheet.showModal();
+        (opts.danger ? cancel : ok).focus();
+        haptic('light');
+    }
+
+    function closeSheet() { if (sheet && sheet.open) sheet.close(); }
+
+    if (sheet) {
+        sheet.addEventListener('click', function (e) {
+            var btn = e.target.closest('[data-sheet]');
+            if (e.target === sheet) { closeSheet(); return; } // backdrop
+            if (!btn) return;
+            var action = btn.dataset.sheet === 'ok' ? sheetAction : null;
+            closeSheet();
+            if (action) action();
+        });
+        sheet.addEventListener('close', function () {
+            sheetAction = null;
+            if (sheetReturn && document.contains(sheetReturn)) sheetReturn.focus();
+        });
     }
 
     function openMatch(uuid, code) {
@@ -829,14 +1010,14 @@
     }
 
     function joinMatch(uuid, code, el) {
-        if (el) el.disabled = true;
+        if (el) busy(el, true);
         api('POST', '/matches/' + uuid + '/join', { code: code }).then(function (res) {
             state.match = res.match;
             state.matchCode = null;
             haptic('success');
             if (state.sub !== 'match') openSub('match'); else render();
             startPolling();
-        }).catch(function (e) { if (el) el.disabled = false; showError(e); });
+        }).catch(function (e) { if (el) busy(el, false); showError(e); });
     }
 
     // Poll the match while it is open on screen (no WebSockets needed).
@@ -893,11 +1074,25 @@
     });
 
     document.addEventListener('input', function (e) {
-        if (e.target.closest('#withdraw-form')) updateWithdrawSummary();
+        var form = e.target.closest('#withdraw-form');
+        if (form) {
+            if (e.target.getAttribute('aria-invalid') === 'true') setFieldError(form, e.target.name, null);
+            updateWithdrawSummary();
+        }
     });
     document.addEventListener('change', function (e) {
-        if (e.target.closest('#withdraw-form')) updateWithdrawSummary();
+        var form = e.target.closest('#withdraw-form');
+        if (form) {
+            if (e.target.name === 'confirm' && e.target.checked) setFieldError(form, 'confirm', null);
+            updateWithdrawSummary();
+        }
     });
+
+    // Hairline under the top bar once content scrolls beneath it.
+    window.addEventListener('scroll', function () {
+        var bar = document.getElementById('topbar');
+        if (bar) bar.classList.toggle('is-scrolled', window.scrollY > 4);
+    }, { passive: true });
 
     document.addEventListener('submit', function (e) {
         var form = e.target;
@@ -912,18 +1107,30 @@
                 note: form.note.value.trim() || null,
                 confirm: form.confirm.checked,
             };
-            if (!payload.confirm) { toast('Please confirm the network and address.', 'error'); return; }
-            confirmDialog('Withdraw ' + payload.amount + ' USDT via ' + payload.network + ' to ' + payload.address.slice(0, 6) + '…' + payload.address.slice(-6) + '?', function () {
+            if (!validateWithdraw(form, payload)) { haptic('error'); return; }
+            var q = withdrawQuote(form);
+            var details = '<dt>Network</dt><dd>' + esc(q.net ? q.net.name : payload.network) + '</dd>' +
+                '<dt>Recipient</dt><dd>' + esc(payload.full_name) + '</dd>' +
+                '<dt>Wallet address</dt><dd></dd><dd class="wrap">' + esc(payload.address) + '</dd>';
+            confirmDialog({
+                title: 'Confirm withdrawal',
+                message: 'Check every detail. Payments sent to a wrong address or network cannot be recovered.',
+                html: q.amount === null ? '' : quoteHtml(q, details),
+                confirm: 'Request ' + payload.amount + ' USDT',
+            }, function () {
                 var btn = form.querySelector('[type=submit]');
-                btn.disabled = true;
+                busy(btn, true);
                 form.dataset.key = form.dataset.key || newKey();
                 api('POST', '/withdrawals', payload, { key: form.dataset.key }).then(function (res) {
                     haptic('success');
                     toast('Request ' + res.withdrawal.reference + ' submitted', 'success');
                     load('withdraw'); load('home');
                 }).catch(function (err) {
-                    btn.disabled = false;
+                    busy(btn, false);
                     if (err.status !== 0) delete form.dataset.key;
+                    if (err.data && err.data.errors) {
+                        Object.keys(err.data.errors).forEach(function (f) { setFieldError(form, f, err.data.errors[f][0]); });
+                    }
                     showError(err);
                 });
             });
@@ -931,22 +1138,28 @@
 
         if (form.id === 'invite-form') {
             var invite = form.invite.value.trim();
-            if (!invite) return;
+            if (!invite) { form.invite.focus(); toast('Enter the @username of a player.', 'error'); return; }
+            var inviteBtn = form.querySelector('[type=submit]');
+            busy(inviteBtn, true);
             api('POST', '/matches', { visibility: 'private', invite: invite }).then(function (res) {
-                toast('Invitation sent!', 'success');
+                toast('Invitation sent', 'success');
                 state.match = res.match;
                 openSub('match');
                 startPolling();
-            }).catch(showError);
+            }).catch(function (e) { busy(inviteBtn, false); showError(e); });
         }
 
         if (form.classList.contains('proof-form')) {
             var id = form.dataset.id;
-            api('POST', '/missions/' + id + '/claim', { proof: form.proof.value.trim() }).then(function (res) {
+            var proof = form.proof.value.trim();
+            if (!proof) { form.proof.setAttribute('aria-invalid', 'true'); form.proof.focus(); toast('Add a username or link so we can verify.', 'error'); return; }
+            var proofBtn = form.querySelector('[type=submit]');
+            busy(proofBtn, true);
+            api('POST', '/missions/' + id + '/claim', { proof: proof }).then(function (res) {
                 delete state.proofOpen[id];
                 toast(res.message, 'success');
                 load('missions');
-            }).catch(showError);
+            }).catch(function (e) { busy(proofBtn, false); showError(e); });
         }
     });
 
@@ -1006,7 +1219,7 @@
             tg.ready();
             try { tg.expand(); } catch (e) { /* ignore */ }
             applyTheme();
-            if (tg.BackButton) tg.BackButton.onClick(function () { closeSub(); });
+            if (tg.BackButton) tg.BackButton.onClick(function () { if (sheet && sheet.open) closeSheet(); else closeSub(); });
         }
 
         authenticate().then(function () {
@@ -1017,15 +1230,21 @@
 
             return load('home').then(function () {
                 if (!handleDeepLink()) { updateChrome(); render(); }
-                if (state.newUser) toast('Welcome! 🎲 Roll doubles to earn your first reward.', 'success');
+                if (state.newUser) toast('Welcome! Roll doubles to earn your first reward.', 'success');
             });
         }).catch(function (err) {
             document.getElementById('boot-text').textContent = err.message || 'Could not connect.';
             document.querySelector('.boot .spinner').hidden = true;
+            var bootEl = document.getElementById('boot');
             if (cfg.bot_url && err.code === 'no_telegram') {
                 var a = document.createElement('a');
                 a.className = 'btn btn-primary'; a.href = cfg.bot_url; a.textContent = 'Open in Telegram';
-                document.getElementById('boot').appendChild(a);
+                bootEl.appendChild(a);
+            } else if (err.code !== 'no_telegram') {
+                var retry = document.createElement('button');
+                retry.type = 'button'; retry.className = 'btn btn-ghost'; retry.textContent = 'Try again';
+                retry.addEventListener('click', function () { location.reload(); });
+                bootEl.appendChild(retry);
             }
         });
     }

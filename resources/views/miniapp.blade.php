@@ -11,6 +11,7 @@
     @include('partials.brand')
 </head>
 <body>
+@include('partials.icons')
 <div id="app" class="app is-booting">
     <section id="boot" class="boot" aria-live="polite">
         <div class="boot-logo">@include('partials.logo')</div>
@@ -20,31 +21,39 @@
     </section>
 
     <header class="topbar" id="topbar" hidden>
-        <button class="topbar-user" type="button" data-action="go" data-tab="home" aria-label="Profile">
+        <button class="topbar-user" type="button" data-action="go" data-tab="home" aria-label="Home">
             <span class="avatar avatar-sm" id="topbar-avatar"></span>
             <span class="topbar-name" id="topbar-name"></span>
         </button>
-        <button class="balance-chip" type="button" data-action="go" data-tab="withdraw" aria-label="Balance">
+        <button class="balance-chip" type="button" data-action="go" data-tab="withdraw" aria-label="Available balance – open withdrawals">
             <span class="usdt-dot" aria-hidden="true">₮</span>
-            <span id="topbar-balance">0.00</span>
+            <span id="topbar-balance">0.00</span><span class="unit">USDT</span>
         </button>
     </header>
 
     <main id="view" class="view" tabindex="-1"></main>
 
     <nav class="tabbar" id="tabbar" hidden aria-label="Main">
-        @foreach (['home' => 'M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z',
-                   'games' => 'M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2zm3.5 4a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3zm7 0a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3zM12 10.5a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3zM8.5 14a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3zm7 0a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3z',
-                   'missions' => 'M12 2a10 10 0 1 1 0 20 10 10 0 0 1 0-20zm0 4a6 6 0 1 0 0 12 6 6 0 0 0 0-12zm0 3.5a2.5 2.5 0 1 1 0 5 2.5 2.5 0 0 1 0-5z',
-                   'withdraw' => 'M4 6h16a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2zm12 5.5a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3zM6 3h11v2H6z'] as $tab => $path)
+        @foreach (['home' => 'home', 'games' => 'dice', 'missions' => 'target', 'withdraw' => 'wallet'] as $tab => $icon)
             <button type="button" class="tab" data-action="go" data-tab="{{ $tab }}">
-                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="{{ $path }}" fill="currentColor" fill-rule="evenodd"/></svg>
+                <svg class="icon" aria-hidden="true"><use href="#i-{{ $icon }}"/></svg>
                 <span>{{ $settings->string('nav.'.$tab) }}</span>
             </button>
         @endforeach
     </nav>
 
     <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+
+    <dialog class="sheet" id="sheet" aria-labelledby="sheet-title" aria-describedby="sheet-text">
+        <div class="sheet-handle" aria-hidden="true"></div>
+        <h2 class="sheet-title" id="sheet-title"></h2>
+        <p class="sheet-text" id="sheet-text"></p>
+        <div class="sheet-body" id="sheet-body"></div>
+        <div class="sheet-actions">
+            <button type="button" class="btn btn-ghost" data-sheet="cancel">Cancel</button>
+            <button type="button" class="btn btn-primary" data-sheet="ok">Confirm</button>
+        </div>
+    </dialog>
 </div>
 
 <script type="application/json" id="app-config">@json($config)</script>

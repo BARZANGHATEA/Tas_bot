@@ -355,8 +355,8 @@ class MatchService
             'total_rounds' => $match->total_rounds,
             'current_round' => $match->current_round,
             'score' => [
-                'you' => $isCreator ? $match->creator_score : $match->opponent_score,
-                'them' => $isCreator ? $match->opponent_score : $match->creator_score,
+                'you' => (int) ($isCreator ? $match->creator_score : $match->opponent_score),
+                'them' => (int) ($isCreator ? $match->opponent_score : $match->creator_score),
             ],
             'rounds' => $rounds,
             'can_roll' => $isParticipant && $active && ! $myRolledCurrent,

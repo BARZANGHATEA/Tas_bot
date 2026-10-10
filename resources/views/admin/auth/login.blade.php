@@ -10,7 +10,7 @@
     <script src="{{ asset('assets/js/admin.js') }}?v={{ @filemtime(public_path('assets/js/admin.js')) }}" defer></script>
 </head>
 <body>
-@include('admin.partials.icons')
+@include('partials.icons')
 <main class="auth">
     <div class="auth-card">
         <div class="auth-brand"><span class="brand-mark"><x-admin.icon name="dice" /></span>{{ $appName }}</div>

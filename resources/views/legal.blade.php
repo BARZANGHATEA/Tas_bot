@@ -13,6 +13,7 @@
         <h1>{{ $title }}</h1>
         <div class="prose">{!! nl2br(e($body)) !!}</div>
         <p class="small muted">{{ $settings->string('legal.disclaimer') }}</p>
+        <nav class="page-links" aria-label="Legal"><a href="{{ url('/') }}">Home</a><a href="{{ route('legal', 'terms') }}">Terms</a><a href="{{ route('legal', 'privacy') }}">Privacy</a></nav>
     </article>
 </main>
 </body>

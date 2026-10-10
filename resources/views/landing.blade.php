@@ -19,7 +19,7 @@
             <p class="muted">This app runs inside Telegram.</p>
         @endif
         <p class="small muted">{{ $settings->string('legal.disclaimer') }}</p>
-        <p class="small"><a href="{{ route('legal', 'terms') }}">Terms</a> · <a href="{{ route('legal', 'privacy') }}">Privacy</a></p>
+        <nav class="page-links" aria-label="Legal"><a href="{{ route('legal', 'terms') }}">Terms</a><a href="{{ route('legal', 'privacy') }}">Privacy</a></nav>
     </div>
 </main>
 </body>
