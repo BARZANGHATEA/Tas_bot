@@ -1,31 +1,40 @@
 @extends('admin.layout')
 @section('title', 'Game rounds')
 @section('content')
-<div class="stats">
-    <x-admin.stat label="Rounds" :value="number_format($totals['all'])" />
-    <x-admin.stat label="Wins" :value="number_format($totals['wins'])" :hint="$totals['all'] ? round($totals['wins'] / $totals['all'] * 100, 2).'% (expected 16.67%)' : null" />
-    <x-admin.stat label="Unfunded wins" :value="number_format($totals['unfunded'])" hint="Won after a daily cap / empty budget" />
+<div class="page-header">
+    <div><h1>Solo game rounds</h1><p class="page-sub">Settled rounds are immutable – results can be inspected, never edited.</p></div>
 </div>
-<section class="panel">
-    <p class="small muted">Settled rounds are immutable and cannot be edited by anyone.</p>
-    <form class="filters" method="get">
-        <label class="field"><span>Result</span><select name="result"><option value="">Any</option><option value="win" @selected(request('result') === 'win')>Wins</option><option value="loss" @selected(request('result') === 'loss')>Losses</option></select></label>
-        <label class="field"><span>User ID</span><input class="input" name="user" value="{{ request('user') }}" placeholder="U000123"></label>
-        <button class="btn">Filter</button>
+<div class="kpis mb-4">
+    <x-admin.stat label="Rounds played" icon="dice" :value="number_format($totals['all'])" />
+    <x-admin.stat label="Wins (doubles)" icon="gift" :value="number_format($totals['wins'])" :hint="$totals['all'] ? round($totals['wins'] / $totals['all'] * 100, 2).'% · expected 16.67%' : 'Expected rate 16.67%'" />
+    <x-admin.stat label="Unfunded wins" icon="wallet" :value="number_format($totals['unfunded'])" hint="Won after a daily cap or empty budget" />
+</div>
+<section class="card card-flush">
+    <form class="toolbar" method="get">
+        <label class="field"><span class="field-label">Result</span><select class="select" name="result"><option value="">All results</option><option value="win" @selected(request('result') === 'win')>Wins</option><option value="loss" @selected(request('result') === 'loss')>Losses</option></select></label>
+        <label class="field"><span class="field-label">Player ID</span><input class="input" name="user" value="{{ request('user') }}" placeholder="U000123"></label>
+        <button class="btn" type="submit"><x-admin.icon name="filter" size="sm" /> Apply</button>
+        @if (request('result') || request('user'))<a class="btn btn-ghost" href="{{ route('admin.games.rounds') }}">Clear</a>@endif
     </form>
-    <div class="table-wrap"><table>
-        <thead><tr><th>Round</th><th>User</th><th>Dice</th><th>Result</th><th class="num">Reward</th><th>When</th></tr></thead>
-        <tbody>
-        @forelse ($rounds as $r)
-            <tr><td class="mono small">{{ \Illuminate\Support\Str::limit($r->uuid, 13, '') }}</td><td>@include('admin.partials.user-link', ['u' => $r->user])</td>
-                <td><span class="die">{{ $r->die_one }}</span><span class="die">{{ $r->die_two }}</span></td>
-                <td>@if ($r->is_win)<x-admin.badge :status="$r->reward_status === 'unfunded' ? 'unfunded' : 'won'" />@else<span class="muted">Loss</span>@endif</td>
-                <td class="num">{{ usdt($r->reward) }}</td><td class="small">{{ biz_date($r->created_at) }}</td></tr>
-        @empty
-            <tr><td colspan="6" class="muted">No rounds.</td></tr>
-        @endforelse
-        </tbody>
-    </table></div>
-    {{ $rounds->links() }}
+    @if ($rounds->isEmpty())
+        <x-admin.empty icon="dice" title="No rounds found" />
+    @else
+        <div class="table-wrap"><table class="table">
+            <thead><tr><th scope="col">Round</th><th scope="col">Player</th><th scope="col">Dice</th><th scope="col">Result</th><x-admin.th-sort column="reward" :sort="$sort" class="num">Reward (USDT)</x-admin.th-sort><x-admin.th-sort column="date" :sort="$sort">Played</x-admin.th-sort></tr></thead>
+            <tbody>
+            @foreach ($rounds as $r)
+                <tr>
+                    <td class="mono small" title="{{ $r->uuid }}">{{ \Illuminate\Support\Str::limit($r->uuid, 8, '') }}</td>
+                    <td><x-admin.user :u="$r->user" /></td>
+                    <td class="nowrap"><span class="die">{{ $r->die_one }}</span><span class="die">{{ $r->die_two }}</span></td>
+                    <td>@if ($r->is_win)<x-admin.badge :status="$r->reward_status === 'unfunded' ? 'unfunded' : 'won'" :label="$r->reward_status === 'unfunded' ? 'Won · unfunded' : 'Won'" />@else<span class="muted">Loss</span>@endif</td>
+                    <td class="num"><x-admin.money :amount="$r->reward" :unit="false" /></td>
+                    <td class="nowrap">{{ biz_date($r->created_at) }}</td>
+                </tr>
+            @endforeach
+            </tbody>
+        </table></div>
+        {{ $rounds->links() }}
+    @endif
 </section>
 @endsection

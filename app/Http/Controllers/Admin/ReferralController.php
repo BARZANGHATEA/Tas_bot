@@ -6,6 +6,7 @@ use App\Models\FraudFlag;
 use App\Models\ReferralReward;
 use App\Models\User;
 use App\Services\ReferralService;
+use App\Support\TableSort;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
@@ -24,7 +25,8 @@ class ReferralController extends AdminController
         }
 
         return view('admin.referrals.index', [
-            'rewards' => $query->latest('id')->paginate(30)->withQueryString(),
+            'sort' => $sort = TableSort::apply($query, $request, ['date' => 'id', 'amount' => 'amount', 'level' => 'level'], 'date'),
+            'rewards' => $query->paginate(TableSort::perPage($request))->withQueryString(),
             'topReferrers' => User::query()->withCount([
                 'referrals',
                 'referrals as qualified_count' => fn ($q) => $q->whereNotNull('referral_qualified_at'),

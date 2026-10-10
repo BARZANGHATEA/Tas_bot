@@ -19,7 +19,7 @@ enum MissionVerification: string
             self::TelegramApi => 'Telegram membership check',
             self::AdminReview => 'Manual review',
             self::VisitTimer => 'Visit timer',
-            self::Automatic => 'Automatic (platform data)',
+            self::Automatic => 'Automatic',
         };
     }
 }

@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Admin;
 
 use App\Models\FraudFlag;
 use App\Services\AuditLogger;
+use App\Support\TableSort;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
@@ -16,7 +17,8 @@ class FraudController extends AdminController
 
         return view('admin.fraud.index', [
             'status' => $status,
-            'flags' => FraudFlag::query()->with(['user', 'resolver'])->where('status', $status)->latest('id')->paginate(30)->withQueryString(),
+            'flags' => FraudFlag::query()->with(['user', 'resolver'])->where('status', $status)->latest('id')->paginate(TableSort::perPage($request))->withQueryString(),
+            'counts' => FraudFlag::query()->selectRaw('status, COUNT(*) as total')->groupBy('status')->pluck('total', 'status'),
         ]);
     }
 

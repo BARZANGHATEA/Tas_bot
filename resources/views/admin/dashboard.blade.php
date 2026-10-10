@@ -1,69 +1,136 @@
 @extends('admin.layout')
 @section('title', 'Dashboard')
 @section('content')
-@if ($stats['budget_low'])
-    <div class="alert alert-warn"><strong>Reward budget is low:</strong> {{ $stats['budget_balance'] }} USDT left. Rewards stop automatically when it reaches zero. <a href="{{ route('admin.budget.index') }}">Fund the budget →</a></div>
-@endif
-@if ($stats['fraud_high'] > 0)
-    <div class="alert alert-danger"><strong>{{ $stats['fraud_high'] }} suspicious activity alert(s)</strong> need review. <a href="{{ route('admin.fraud.index') }}">Open fraud review →</a></div>
-@endif
+@php
+    $s = $stats;
+    $attention = array_filter([
+        $s['withdrawals_pending'] ? ['href' => route('admin.withdrawals.index', ['status' => 'pending']), 'icon' => 'banknote', 'tone' => 'warning', 'count' => $s['withdrawals_pending'], 'title' => 'Withdrawals to review', 'text' => $s['withdrawals_pending_amount'].' USDT waiting for a decision'] : null,
+        $s['missions_pending'] ? ['href' => route('admin.missions.reviews'), 'icon' => 'inbox', 'tone' => 'info', 'count' => $s['missions_pending'], 'title' => 'Mission submissions', 'text' => 'Proofs waiting for a moderator'] : null,
+        $s['fraud_high'] ? ['href' => route('admin.fraud.index'), 'icon' => 'shield', 'tone' => 'danger', 'count' => $s['fraud_high'], 'title' => 'Fraud signals', 'text' => 'Medium or high severity, unresolved'] : null,
+        $s['budget_low'] ? ['href' => route('admin.budget.index'), 'icon' => 'wallet', 'tone' => 'danger', 'count' => $s['budget_balance'], 'title' => 'Reward budget is low', 'text' => 'USDT left – rewards stop at zero'] : null,
+    ]);
+    $capRaw = \App\Support\Money::of($s['platform_cap']);
+    $usedRaw = \App\Support\Money::of($s['rewards_today_raw']);
+    $capPct = $capRaw->isPositive() ? min(100, (int) round((float) (string) $usedRaw->dividedBy($capRaw, 4, \Brick\Math\RoundingMode::DOWN) * 100)) : null;
+@endphp
 
-<div class="stats">
-    <x-admin.stat label="Registered users" :value="number_format($stats['users_total'])" :hint="'+'.$stats['users_today'].' today'" :href="route('admin.users.index')" />
-    <x-admin.stat label="Active users" :value="number_format($stats['users_active_24h'])" :hint="number_format($stats['users_active_7d']).' in 7 days'" />
-    <x-admin.stat label="Games played" :value="number_format($stats['rounds_total'] + $stats['matches_completed'])" :hint="$stats['rounds_today'].' solo rounds today'" :href="route('admin.games.rounds')" />
-    <x-admin.stat label="Win / loss (solo)" :value="number_format($stats['wins_total']).' / '.number_format($stats['losses_total'])" :hint="$stats['win_rate'].'% win rate (expected 16.7%)'" />
-    <x-admin.stat label="Rewards issued" :value="$stats['rewards_total'].' USDT'" :hint="$stats['rewards_today'].' USDT today'" :href="route('admin.ledger.index')" />
-    <x-admin.stat label="Reward budget" :value="$stats['budget_balance'].' USDT'" :tone="$stats['budget_low'] ? 'warn' : 'ok'" :href="route('admin.budget.index')" />
-    <x-admin.stat label="Pending withdrawals" :value="$stats['withdrawals_pending']" :hint="$stats['withdrawals_open_amount'].' USDT in progress'" :tone="$stats['withdrawals_pending'] ? 'warn' : null" :href="route('admin.withdrawals.index', ['status' => 'pending'])" />
-    <x-admin.stat label="Withdrawals paid" :value="$stats['withdrawals_paid_amount'].' USDT'" :hint="$stats['withdrawals_paid_count'].' payments'" />
-    <x-admin.stat label="Referrals" :value="number_format($stats['referred_users'])" :hint="$stats['qualified_referrals'].' qualified · '.$stats['referral_rewards'].' USDT paid'" :href="route('admin.referrals.index')" />
-    <x-admin.stat label="Missions" :value="number_format($stats['missions_completed'])" :hint="$stats['missions_pending'].' waiting for review'" :tone="$stats['missions_pending'] ? 'warn' : null" :href="route('admin.missions.reviews')" />
-    <x-admin.stat label="Matches" :value="number_format($stats['matches_completed'])" :hint="$stats['matches_open'].' open now'" :href="route('admin.games.matches')" />
-    <x-admin.stat label="Fraud alerts" :value="$stats['fraud_open']" :tone="$stats['fraud_open'] ? 'danger' : 'ok'" :href="route('admin.fraud.index')" />
+<div class="page-header">
+    <div>
+        <h1>Overview</h1>
+        <p class="page-sub">{{ \Carbon\CarbonImmutable::now(app(\App\Services\Settings::class)->timezone())->format('l, j F Y · H:i') }} ({{ app(\App\Services\Settings::class)->timezone() }})</p>
+    </div>
+    <div class="page-actions">
+        @adminCan('withdrawals.view')<a class="btn" href="{{ route('admin.withdrawals.index') }}"><x-admin.icon name="banknote" size="sm" /> Withdrawals</a>@endadminCan
+        @adminCan('budget.manage')<a class="btn btn-primary" href="{{ route('admin.budget.index') }}"><x-admin.icon name="plus" size="sm" /> Fund budget</a>@endadminCan
+    </div>
 </div>
 
-<div class="grid grid-2">
-    @foreach (['registrations' => 'New registrations (14 days)', 'rounds_series' => 'Solo rounds played (14 days)'] as $key => $title)
-        @php $max = max(1, max(array_column($stats[$key], 'count'))); @endphp
-        <section class="panel">
-            <div class="panel-head"><h3>{{ $title }}</h3><span class="muted small">max {{ $max }}/day</span></div>
-            <div class="bars">
-                @foreach ($stats[$key] as $point)
-                    <div class="bar" style="height: {{ max(1, round($point['count'] / $max * 100)) }}%" data-label="{{ $point['date'] }}: {{ $point['count'] }}"></div>
+<section aria-labelledby="attention-title" class="mb-4">
+    <h2 id="attention-title" class="sr-only">Needs attention</h2>
+    @if ($attention)
+        <div class="attention">
+            @foreach ($attention as $item)
+                <a class="attention-item is-{{ $item['tone'] }}" href="{{ $item['href'] }}">
+                    <span class="attention-icon"><x-admin.icon :name="$item['icon']" /></span>
+                    <span class="grow">
+                        <span class="row-between"><span class="attention-title">{{ $item['title'] }}</span><span class="attention-count">{{ $item['count'] }}</span></span>
+                        <span class="attention-text">{{ $item['text'] }}</span>
+                    </span>
+                </a>
+            @endforeach
+        </div>
+    @else
+        <div class="alert alert-success mb-0"><x-admin.icon name="check-circle" /><div class="alert-body"><strong>All clear.</strong> No withdrawals, submissions or fraud signals are waiting, and the reward budget is healthy.</div></div>
+    @endif
+</section>
+
+<section aria-label="Today" class="kpis mb-4">
+    <x-admin.stat label="New users today" icon="users" :value="number_format($s['users_today'])" :delta="$s['users_today'] - $s['users_yesterday']" :href="route('admin.users.index')" />
+    <x-admin.stat label="Solo rounds today" icon="dice" :value="number_format($s['rounds_today'])" :delta="$s['rounds_today'] - $s['rounds_yesterday']" :href="route('admin.games.rounds')" />
+    <x-admin.stat label="Rewards issued today" icon="gift" :value="$s['rewards_today']" unit="USDT" :hint="'Yesterday '.$s['rewards_yesterday'].' USDT'">
+        @if ($capPct !== null)
+            <div class="meter {{ $capPct >= 90 ? 'is-danger' : ($capPct >= 70 ? 'is-warning' : '') }}" role="meter" aria-valuemin="0" aria-valuemax="100" aria-valuenow="{{ $capPct }}" aria-label="Daily reward cap used"><span style="width: {{ $capPct }}%"></span></div>
+            <div class="stat-hint">{{ $capPct }}% of the {{ usdt($capRaw) }} USDT daily cap</div>
+        @endif
+    </x-admin.stat>
+    <x-admin.stat label="Active users (24 h)" icon="activity" :value="number_format($s['users_active_24h'])" :hint="number_format($s['users_active_7d']).' in the last 7 days'" />
+    <x-admin.stat label="Reward budget" icon="wallet" :value="$s['budget_balance']" unit="USDT" :hint="$s['budget_low'] ? 'Below the alert threshold' : 'Available for rewards'" :href="route('admin.budget.index')" />
+</section>
+
+<div class="grid grid-2 mb-4">
+    <section class="card" aria-labelledby="chart-reg-title">
+        <div class="card-header"><div><h2 id="chart-reg-title">New registrations</h2><p class="card-sub">Last 14 days · today highlighted</p></div></div>
+        <div class="card-body"><x-admin.chart id="chart-reg" :series="$s['registrations']" title="New registrations, last 14 days" unit=" users" /></div>
+    </section>
+    <section class="card" aria-labelledby="chart-rounds-title">
+        <div class="card-header"><div><h2 id="chart-rounds-title">Solo rounds played</h2><p class="card-sub">Last 14 days · today highlighted</p></div></div>
+        <div class="card-body"><x-admin.chart id="chart-rounds" :series="$s['rounds_series']" title="Solo rounds played, last 14 days" unit=" rounds" /></div>
+    </section>
+</div>
+
+<div class="grid grid-2 mb-4">
+    <section class="card card-flush" aria-labelledby="queue-title">
+        <div class="card-header">
+            <div><h2 id="queue-title">Oldest pending withdrawals</h2><p class="card-sub">First in, first reviewed</p></div>
+            <a class="btn btn-sm" href="{{ route('admin.withdrawals.index', ['status' => 'pending']) }}">View queue</a>
+        </div>
+        @if ($pending->isEmpty())
+            <x-admin.empty icon="check-circle" title="Queue is empty" text="New withdrawal requests appear here as soon as players submit them." />
+        @else
+            <div class="table-wrap"><table class="table">
+                <thead><tr><th scope="col">Request</th><th scope="col">Player</th><th scope="col" class="num">Amount</th><th scope="col"><span class="sr-only">Actions</span></th></tr></thead>
+                <tbody>
+                @foreach ($pending as $w)
+                    <tr data-href="{{ route('admin.withdrawals.show', $w) }}" class="is-clickable">
+                        <td><a href="{{ route('admin.withdrawals.show', $w) }}" class="cell-strong mono">{{ $w->reference }}</a><span class="sub">{{ $w->created_at->diffForHumans() }}</span></td>
+                        <td><x-admin.user :u="$w->user" /></td>
+                        <td class="num"><x-admin.money :amount="$w->amount" /><span class="sub">{{ $w->network }}</span></td>
+                        <td class="actions"><a class="btn btn-xs" href="{{ route('admin.withdrawals.show', $w) }}">Review</a></td>
+                    </tr>
                 @endforeach
-            </div>
-            <div class="bar-labels">@foreach ($stats[$key] as $i => $point)<span>{{ $i % 2 === 0 ? $point['date'] : '' }}</span>@endforeach</div>
-        </section>
-    @endforeach
+                </tbody>
+            </table></div>
+        @endif
+    </section>
+
+    <section class="card card-flush" aria-labelledby="alerts-title">
+        <div class="card-header">
+            <div><h2 id="alerts-title">Recent fraud signals</h2><p class="card-sub">Hints for a human decision, not proof</p></div>
+            <a class="btn btn-sm" href="{{ route('admin.fraud.index') }}">Open review</a>
+        </div>
+        @if ($alerts->isEmpty())
+            <x-admin.empty icon="shield" title="No open signals" text="Sign-up bursts, shared payout wallets and similar patterns are flagged here automatically." />
+        @else
+            <div class="table-wrap"><table class="table">
+                <thead><tr><th scope="col">Player</th><th scope="col">Signal</th><th scope="col">Severity</th></tr></thead>
+                <tbody>
+                @foreach ($alerts as $flag)
+                    <tr>
+                        <td><x-admin.user :u="$flag->user" /></td>
+                        <td>{{ ucfirst(str_replace('_', ' ', $flag->type)) }}<span class="sub">{{ $flag->created_at->diffForHumans() }}</span></td>
+                        <td><x-admin.badge :status="$flag->severity" /></td>
+                    </tr>
+                @endforeach
+                </tbody>
+            </table></div>
+        @endif
+    </section>
 </div>
 
-<div class="grid grid-2">
-    <section class="panel">
-        <div class="panel-head"><h3>Oldest pending withdrawals</h3><a href="{{ route('admin.withdrawals.index', ['status' => 'pending']) }}">View all</a></div>
-        <div class="table-wrap"><table>
-            <thead><tr><th>Reference</th><th>User</th><th class="num">Amount</th><th>Requested</th></tr></thead>
-            <tbody>
-            @forelse ($pending as $w)
-                <tr><td><a href="{{ route('admin.withdrawals.show', $w) }}">{{ $w->reference }}</a></td><td>@include('admin.partials.user-link', ['u' => $w->user])</td><td class="num">{{ usdt($w->amount) }} {{ $w->network }}</td><td class="small">{{ biz_date($w->created_at) }}</td></tr>
-            @empty
-                <tr><td colspan="4" class="muted">Nothing waiting. 🎉</td></tr>
-            @endforelse
-            </tbody>
-        </table></div>
-    </section>
-    <section class="panel">
-        <div class="panel-head"><h3>Suspicious activity</h3><a href="{{ route('admin.fraud.index') }}">View all</a></div>
-        <div class="table-wrap"><table>
-            <thead><tr><th>User</th><th>Signal</th><th>Severity</th><th>When</th></tr></thead>
-            <tbody>
-            @forelse ($alerts as $flag)
-                <tr><td>@include('admin.partials.user-link', ['u' => $flag->user])</td><td>{{ str_replace('_', ' ', $flag->type) }}</td><td><x-admin.badge :status="$flag->severity" /></td><td class="small">{{ biz_date($flag->created_at) }}</td></tr>
-            @empty
-                <tr><td colspan="4" class="muted">No open alerts.</td></tr>
-            @endforelse
-            </tbody>
-        </table></div>
-    </section>
-</div>
+<section class="card" aria-labelledby="totals-title">
+    <div class="card-header"><div><h2 id="totals-title">All-time totals</h2></div></div>
+    <div class="card-body">
+        <dl class="dl-stacked">
+            <div><dt>Registered users</dt><dd>{{ number_format($s['users_total']) }}</dd></div>
+            <div><dt>Games played</dt><dd>{{ number_format($s['rounds_total'] + $s['matches_completed']) }}</dd></div>
+            <div><dt>Solo win rate</dt><dd>{{ $s['win_rate'] }}% <span class="muted small">(expected 16.7%)</span></dd></div>
+            <div><dt>Rewards issued</dt><dd>{{ $s['rewards_total'] }} <span class="unit">USDT</span></dd></div>
+            <div><dt>Withdrawals paid</dt><dd>{{ $s['withdrawals_paid_amount'] }} <span class="unit">USDT</span> <span class="muted small">· {{ number_format($s['withdrawals_paid_count']) }}</span></dd></div>
+            <div><dt>Referred users</dt><dd>{{ number_format($s['referred_users']) }} <span class="muted small">· {{ number_format($s['qualified_referrals']) }} qualified</span></dd></div>
+            <div><dt>Referral rewards</dt><dd>{{ $s['referral_rewards'] }} <span class="unit">USDT</span></dd></div>
+            <div><dt>Missions completed</dt><dd>{{ number_format($s['missions_completed']) }}</dd></div>
+            <div><dt>Matches</dt><dd>{{ number_format($s['matches_completed']) }} <span class="muted small">· {{ number_format($s['matches_open']) }} open</span></dd></div>
+        </dl>
+    </div>
+</section>
 @endsection

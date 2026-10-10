@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Models\AuditLog;
+use App\Support\TableSort;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
 
@@ -19,7 +20,7 @@ class AuditController extends AdminController
         }
 
         return view('admin.audit.index', [
-            'logs' => $query->latest('id')->paginate(50)->withQueryString(),
+            'logs' => $query->latest('id')->paginate(TableSort::perPage($request, 50))->withQueryString(),
             'actions' => AuditLog::query()->select('action')->distinct()->orderBy('action')->pluck('action'),
         ]);
     }

@@ -8,6 +8,7 @@ use App\Http\Requests\Admin\MissionRequest;
 use App\Models\Mission;
 use App\Models\MissionCompletion;
 use App\Services\AuditLogger;
+use App\Support\TableSort;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
@@ -28,7 +29,11 @@ class MissionController extends AdminController
         }
 
         return view('admin.missions.index', [
-            'missions' => $query->orderBy('sort_order')->orderBy('id')->paginate(30)->withQueryString(),
+            'sort' => $sort = TableSort::apply($query, $request, [
+                'order' => 'sort_order', 'title' => 'title', 'reward' => 'reward', 'completed' => 'rewarded_count', 'pending' => 'pending_count',
+            ], 'order', 'asc'),
+            'missions' => $query->paginate(TableSort::perPage($request))->withQueryString(),
+            'counts' => Mission::query()->selectRaw('status, COUNT(*) as total')->groupBy('status')->pluck('total', 'status'),
             'pendingReviews' => MissionCompletion::query()->where('status', 'pending_review')->count(),
         ]);
     }

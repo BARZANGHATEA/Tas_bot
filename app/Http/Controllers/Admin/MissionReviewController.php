@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Admin;
 
 use App\Models\MissionCompletion;
 use App\Services\MissionService;
+use App\Support\TableSort;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
@@ -21,7 +22,8 @@ class MissionReviewController extends AdminController
             'completions' => MissionCompletion::query()->with(['mission', 'user', 'reviewer'])
                 ->where('status', $status)
                 ->orderBy($status === 'pending_review' ? 'submitted_at' : 'reviewed_at', $status === 'pending_review' ? 'asc' : 'desc')
-                ->paginate(30)->withQueryString(),
+                ->paginate(TableSort::perPage($request))->withQueryString(),
+            'counts' => MissionCompletion::query()->whereIn('status', ['pending_review', 'rewarded', 'rejected'])->selectRaw('status, COUNT(*) as total')->groupBy('status')->pluck('total', 'status'),
         ]);
     }
 

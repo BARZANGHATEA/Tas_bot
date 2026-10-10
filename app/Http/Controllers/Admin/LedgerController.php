@@ -8,6 +8,7 @@ use App\Models\ReferralReward;
 use App\Services\AuditLogger;
 use App\Services\WalletService;
 use App\Support\Money;
+use App\Support\TableSort;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -17,8 +18,12 @@ class LedgerController extends AdminController
 {
     public function index(Request $request): View
     {
+        $query = $this->filtered($request)->with(['user', 'admin', 'reversal']);
+        $sort = TableSort::apply($query, $request, ['date' => 'id', 'amount' => 'available_delta', 'type' => 'type'], 'date');
+
         return view('admin.ledger.index', [
-            'entries' => $this->filtered($request)->with(['user', 'admin', 'reversal'])->latest('id')->paginate(40)->withQueryString(),
+            'entries' => $query->paginate(TableSort::perPage($request, 50))->withQueryString(),
+            'sort' => $sort,
             'types' => LedgerType::cases(),
         ]);
     }

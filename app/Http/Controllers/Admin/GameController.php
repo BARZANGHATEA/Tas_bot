@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Admin;
 use App\Models\GameMatch;
 use App\Models\GameRound;
 use App\Services\MatchService;
+use App\Support\TableSort;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
 
@@ -23,8 +24,11 @@ class GameController extends AdminController
             $query->where('user_id', (int) ltrim((string) $userId, 'Uu0'));
         }
 
+        $sort = TableSort::apply($query, $request, ['date' => 'id', 'reward' => 'reward'], 'date');
+
         return view('admin.games.rounds', [
-            'rounds' => $query->latest('id')->paginate(40)->withQueryString(),
+            'rounds' => $query->paginate(TableSort::perPage($request, 50))->withQueryString(),
+            'sort' => $sort,
             'totals' => [
                 'all' => GameRound::query()->count(),
                 'wins' => GameRound::query()->where('is_win', true)->count(),
@@ -40,7 +44,13 @@ class GameController extends AdminController
             $query->where('status', $status);
         }
 
-        return view('admin.games.matches', ['matches' => $query->latest('id')->paginate(30)->withQueryString()]);
+        $sort = TableSort::apply($query, $request, ['date' => 'id', 'status' => 'status'], 'date');
+
+        return view('admin.games.matches', [
+            'matches' => $query->paginate(TableSort::perPage($request))->withQueryString(),
+            'sort' => $sort,
+            'counts' => GameMatch::query()->selectRaw('status, COUNT(*) as total')->groupBy('status')->pluck('total', 'status'),
+        ]);
     }
 
     public function match(GameMatch $match, MatchService $service): View

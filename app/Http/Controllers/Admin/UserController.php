@@ -10,6 +10,7 @@ use App\Models\LedgerEntry;
 use App\Models\MissionCompletion;
 use App\Models\ReferralReward;
 use App\Models\User;
+use App\Models\Wallet;
 use App\Models\Withdrawal;
 use App\Services\AuditLogger;
 use App\Services\FraudService;
@@ -18,6 +19,7 @@ use App\Services\Settings;
 use App\Services\StatsService;
 use App\Services\WalletService;
 use App\Support\Money;
+use App\Support\TableSort;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
@@ -30,7 +32,8 @@ class UserController extends AdminController
 
     public function index(Request $request): View
     {
-        $query = User::query()->with('wallet')->withCount('referrals');
+        $query = User::query()->select('users.*')->with('wallet')->withCount('referrals')
+            ->addSelect(['wallet_available' => Wallet::query()->select('available')->whereColumn('wallets.user_id', 'users.id')->limit(1)]);
 
         if ($search = trim((string) $request->query('q'))) {
             $query->where(function ($q) use ($search) {
@@ -51,8 +54,19 @@ class UserController extends AdminController
             $query->where('is_flagged', true);
         }
 
+        $sort = TableSort::apply($query, $request, [
+            'joined' => 'users.id',
+            'name' => 'first_name',
+            'last_seen' => 'last_seen_at',
+            'balance' => 'wallet_available',
+            'referrals' => 'referrals_count',
+        ], 'joined');
+
         return view('admin.users.index', [
-            'users' => $query->latest('id')->paginate(25)->withQueryString(),
+            'users' => $query->paginate(TableSort::perPage($request))->withQueryString(),
+            'sort' => $sort,
+            'statusCounts' => User::query()->selectRaw('status, COUNT(*) as total')->groupBy('status')->pluck('total', 'status'),
+            'flaggedCount' => User::query()->where('is_flagged', true)->count(),
         ]);
     }
 

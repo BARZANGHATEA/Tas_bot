@@ -126,9 +126,24 @@ class StatsService
             'budget_low' => Money::of($budget->balance)->isLessThan($this->settings->money('rewards.low_budget_alert')),
             'fraud_open' => FraudFlag::query()->where('status', 'open')->count(),
             'fraud_high' => FraudFlag::query()->where('status', 'open')->whereIn('severity', ['medium', 'high'])->count(),
-            'registrations' => $this->dailySeries(User::query(), 14),
-            'rounds_series' => $this->dailySeries(GameRound::query(), 14),
+            'registrations' => $registrations = $this->dailySeries(User::query(), 14),
+            'rounds_series' => $rounds = $this->dailySeries(GameRound::query(), 14),
+            'users_yesterday' => $registrations[count($registrations) - 2]['count'] ?? 0,
+            'rounds_yesterday' => $rounds[count($rounds) - 2]['count'] ?? 0,
+            'rewards_yesterday' => Money::format($this->rewardsBetween($today->subDay(), $today)),
+            'rewards_today_raw' => (string) $this->budget->issuedToday(),
+            'platform_cap' => (string) $this->settings->money('rewards.platform_daily_cap'),
+            'withdrawals_pending_amount' => Money::format($sum(Withdrawal::query()->where('status', WithdrawalStatus::Pending), 'amount')),
         ];
+    }
+
+    /** Platform-funded rewards issued in [from, to) – same definition as the daily cap. */
+    private function rewardsBetween(\DateTimeInterface $from, \DateTimeInterface $to): BigDecimal
+    {
+        $types = [LedgerType::GameReward->value, LedgerType::MatchReward->value, LedgerType::ReferralReward->value, LedgerType::MissionReward->value];
+
+        return LedgerEntry::query()->whereIn('type', $types)->where('created_at', '>=', $from)->where('created_at', '<', $to)
+            ->pluck('available_delta')->reduce(fn (BigDecimal $c, $v) => $c->plus(Money::of($v)), Money::zero());
     }
 
     /**

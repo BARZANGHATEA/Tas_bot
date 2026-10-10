@@ -8,6 +8,7 @@ use App\Services\AuditLogger;
 use App\Services\ReferralService;
 use App\Services\WithdrawalService;
 use App\Support\Money;
+use App\Support\TableSort;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -20,9 +21,16 @@ class WithdrawalController extends AdminController
     public function index(Request $request): View
     {
         $query = $this->filtered($request)->with('user');
+        $sort = TableSort::apply($query, $request, [
+            'requested' => 'id',
+            'amount' => 'amount',
+            'status' => 'status',
+            'network' => 'network',
+        ], 'requested', $request->query('status') === 'pending' ? 'asc' : 'desc');
 
         return view('admin.withdrawals.index', [
-            'withdrawals' => $query->latest('id')->paginate(25)->withQueryString(),
+            'withdrawals' => $query->paginate(TableSort::perPage($request))->withQueryString(),
+            'sort' => $sort,
             'statuses' => WithdrawalStatus::cases(),
             'networks' => $this->withdrawals->networks(false),
             'counts' => Withdrawal::query()->selectRaw('status, COUNT(*) as total')->groupBy('status')->pluck('total', 'status'),
